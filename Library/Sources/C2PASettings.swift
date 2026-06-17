@@ -45,6 +45,10 @@ import Foundation
 public final class C2PASettings {
     private var settingsString: String
     private var format: String
+    private let ptr: UnsafeMutablePointer<C2paSettings>
+
+    /// The native settings handle, used to configure a ``C2PAContextBuilder``.
+    var rawPtr: UnsafeMutablePointer<C2paSettings> { ptr }
 
     /// Creates settings from a JSON string.
     ///
@@ -53,7 +57,8 @@ public final class C2PASettings {
     public init(json: String) throws {
         self.settingsString = json
         self.format = "json"
-        try apply()
+        self.ptr = try guardNotNull(c2pa_settings_new())
+        try update()
     }
 
     /// Creates settings from a TOML string.
@@ -63,7 +68,8 @@ public final class C2PASettings {
     public init(toml: String) throws {
         self.settingsString = toml
         self.format = "toml"
-        try apply()
+        self.ptr = try guardNotNull(c2pa_settings_new())
+        try update()
     }
 
     /// Creates settings from a type-safe ``C2PASettingsDefinition``.
@@ -77,8 +83,11 @@ public final class C2PASettings {
     public init(definition: C2PASettingsDefinition) throws {
         self.settingsString = try C2PAJson.encode(definition)
         self.format = "json"
-        try apply()
+        self.ptr = try guardNotNull(c2pa_settings_new())
+        try update()
     }
+
+    deinit { _ = c2pa_free(ptr) }
 
     /// Loads additional JSON settings, merging with existing configuration.
     ///
@@ -87,7 +96,7 @@ public final class C2PASettings {
     public func load(json: String) throws {
         self.settingsString = json
         self.format = "json"
-        try apply()
+        try update()
     }
 
     /// Loads additional TOML settings, merging with existing configuration.
@@ -97,7 +106,7 @@ public final class C2PASettings {
     public func load(toml: String) throws {
         self.settingsString = toml
         self.format = "toml"
-        try apply()
+        try update()
     }
 
     /// Loads settings from a type-safe ``C2PASettingsDefinition``,
@@ -108,7 +117,7 @@ public final class C2PASettings {
     public func load(definition: C2PASettingsDefinition) throws {
         self.settingsString = try C2PAJson.encode(definition)
         self.format = "json"
-        try apply()
+        try update()
     }
 
     /// Sets a single value at the given dot-separated path within the settings.
@@ -153,7 +162,7 @@ public final class C2PASettings {
         }
 
         self.settingsString = updatedString
-        try apply()
+        try update()
     }
 
     /// Creates a ``Signer`` from the loaded settings.
@@ -170,10 +179,10 @@ public final class C2PASettings {
 
     // MARK: - Private
 
-    private func apply() throws {
+    private func update() throws {
         try settingsString.withCString { settingsPtr in
             try format.withCString { formatPtr in
-                let result = c2pa_load_settings(settingsPtr, formatPtr)
+                let result = c2pa_settings_update_from_string(ptr, settingsPtr, formatPtr)
                 guard result == 0 else {
                     throw C2PAError.api(lastC2PAError())
                 }
