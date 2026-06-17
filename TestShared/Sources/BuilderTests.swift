@@ -446,6 +446,20 @@ public final class BuilderTests: TestImplementation {
         }
     }
 
+    public func testBuilderSetBasePath() -> TestResult {
+        do {
+            let builder = try Builder(manifestJSON: TestUtilities.createTestManifestJSON())
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("c2pa_base_\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: dir) }
+            try builder.setBasePath(dir)
+            return .success("Builder Set Base Path", "[PASS] setBasePath accepted a directory")
+        } catch {
+            return .failure("Builder Set Base Path", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         return [
             testBuilderAPI(),
@@ -457,7 +471,8 @@ public final class BuilderTests: TestImplementation {
             testBuilderSetIntentCreate(),
             testBuilderSetIntentEdit(),
             testBuilderSetIntentUpdate(),
-            testReadIngredient()
+            testReadIngredient(),
+            testBuilderSetBasePath()
         ]
     }
 }

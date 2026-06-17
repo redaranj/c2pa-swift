@@ -35,6 +35,7 @@ import Foundation
 /// - ``addAction(_:)``
 /// - ``setNoEmbed()``
 /// - ``setRemote(url:)``
+/// - ``setBasePath(_:)``
 ///
 /// ### Adding Content
 /// - ``addResource(uri:stream:)``
@@ -242,6 +243,17 @@ public final class Builder {
     public func setRemote(url: URL) throws {
         _ = try guardNonNegative(
             Int64(c2pa_builder_set_remote_url(ptr, url.absoluteString))
+        )
+    }
+
+    /// Sets the base directory used to resolve relative resource paths in the manifest.
+    ///
+    /// - Parameter url: A directory URL used as the base path for resolving resources.
+    ///
+    /// - Throws: ``C2PAError`` if the base path cannot be set.
+    public func setBasePath(_ url: URL) throws {
+        _ = try guardNonNegative(
+            Int64(c2pa_builder_set_base_path(ptr, url.path))
         )
     }
 

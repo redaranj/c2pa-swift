@@ -128,6 +128,11 @@ final class BuilderTests: XCTestCase {
         let result = tests.testReadIngredient()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testBuilderSetBasePath() throws {
+        let result = tests.testBuilderSetBasePath()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Reader Tests
