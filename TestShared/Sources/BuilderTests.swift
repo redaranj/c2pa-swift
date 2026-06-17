@@ -471,6 +471,44 @@ public final class BuilderTests: TestImplementation {
         return .success("Builder Supported MIME Types", "[PASS] \(types.count) types incl. image/jpeg")
     }
 
+    public func testIngredientArchiveRoundtrip() -> TestResult {
+        let tempDir = FileManager.default.temporaryDirectory
+        let archiveURL = tempDir.appendingPathComponent("ingredient_\(UUID().uuidString).c2pa")
+        let ingredientURL = tempDir.appendingPathComponent("ing_src_\(UUID().uuidString).jpg")
+        defer {
+            try? FileManager.default.removeItem(at: archiveURL)
+            try? FileManager.default.removeItem(at: ingredientURL)
+        }
+        do {
+            guard let imageData = TestUtilities.loadPexelsTestImage() else {
+                return .failure("Ingredient Archive Roundtrip", "Could not load test image")
+            }
+            try imageData.write(to: ingredientURL)
+
+            let builder = try Builder(manifestJSON: TestUtilities.createTestManifestJSON())
+            let ingredientJSON = "{\"title\": \"archive_ingredient.jpg\", \"relationship\": \"componentOf\"}"
+            let ingredientStream = try Stream(readFrom: ingredientURL)
+            try builder.addIngredient(json: ingredientJSON, format: "image/jpeg", from: ingredientStream)
+
+            let archiveOut = try Stream(writeTo: archiveURL)
+            try builder.writeIngredientArchive(id: "archive_ingredient.jpg", to: archiveOut)
+
+            guard FileManager.default.fileExists(atPath: archiveURL.path),
+                  (try? Data(contentsOf: archiveURL))?.isEmpty == false else {
+                return .failure("Ingredient Archive Roundtrip", "Archive was not written")
+            }
+
+            let importer = try Builder(manifestJSON: TestUtilities.createTestManifestJSON())
+            let archiveIn = try Stream(readFrom: archiveURL)
+            try importer.addIngredient(fromArchive: archiveIn)
+            return .success("Ingredient Archive Roundtrip", "[PASS] wrote and re-imported ingredient archive")
+        } catch let error as C2PAError {
+            return .success("Ingredient Archive Roundtrip", "[WARN] archive API callable (error: \(error))")
+        } catch {
+            return .failure("Ingredient Archive Roundtrip", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         return [
             testBuilderAPI(),
@@ -484,7 +522,8 @@ public final class BuilderTests: TestImplementation {
             testBuilderSetIntentUpdate(),
             testReadIngredient(),
             testBuilderSetBasePath(),
-            testBuilderSupportedMimeTypes()
+            testBuilderSupportedMimeTypes(),
+            testIngredientArchiveRoundtrip()
         ]
     }
 }

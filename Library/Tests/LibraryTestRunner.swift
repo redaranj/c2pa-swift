@@ -138,6 +138,11 @@ final class BuilderTests: XCTestCase {
         let result = tests.testBuilderSupportedMimeTypes()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testIngredientArchiveRoundtrip() throws {
+        let result = tests.testIngredientArchiveRoundtrip()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Reader Tests
