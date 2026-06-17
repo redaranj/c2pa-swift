@@ -907,6 +907,11 @@ final class ContextTests: XCTestCase {
         let result = tests.testContextCancel()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testBuilderFromContext() throws {
+        let result = tests.testBuilderFromContext()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Settings Definition Tests

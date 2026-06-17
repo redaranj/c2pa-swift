@@ -45,11 +45,23 @@ public final class ContextTests: TestImplementation {
         }
     }
 
+    public func testBuilderFromContext() -> TestResult {
+        do {
+            let manifestJSON = TestUtilities.createTestManifestJSON()
+            let context = try C2PAContext()
+            _ = try Builder(context: context, manifestJSON: manifestJSON)
+            return .success("Builder From Context", "[PASS] Created Builder from context")
+        } catch {
+            return .failure("Builder From Context", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         [
             testContextDefaultCreation(),
             testContextFromSettings(),
             testContextCancel(),
+            testBuilderFromContext(),
         ]
     }
 }
