@@ -75,7 +75,9 @@ public final class C2PAContext {
     ///
     /// - Throws: ``C2PAError`` if the cancellation request fails.
     public func cancel() throws {
-        _ = try guardNonNegative(Int64(c2pa_context_cancel(ptr)))
+        guard c2pa_context_cancel(ptr) == 0 else {
+            throw C2PAError.api(lastC2PAError())
+        }
     }
 }
 
@@ -149,9 +151,8 @@ public final class C2PAContextBuilder {
         guard let ptr else {
             throw C2PAError.api("Context builder has already been built")
         }
-        let context = try guardNotNull(c2pa_context_builder_build(ptr))
-        self.ptr = nil  // the native builder is consumed by build()
-        return context
+        self.ptr = nil  // c2pa_context_builder_build consumes the builder, even on error
+        return try guardNotNull(c2pa_context_builder_build(ptr))
     }
 
     deinit {

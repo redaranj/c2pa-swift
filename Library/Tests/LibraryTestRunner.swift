@@ -893,16 +893,19 @@ final class AssertionDefinitionTests: XCTestCase {
 final class ContextTests: XCTestCase {
     private let tests = TestShared.ContextTests()
 
-    func testContextDefaultCreation() {
-        XCTAssertTrue(tests.testContextDefaultCreation().passed)
+    func testContextDefaultCreation() throws {
+        let result = tests.testContextDefaultCreation()
+        XCTAssertTrue(result.passed, result.message)
     }
 
-    func testContextFromSettings() {
-        XCTAssertTrue(tests.testContextFromSettings().passed)
+    func testContextFromSettings() throws {
+        let result = tests.testContextFromSettings()
+        XCTAssertTrue(result.passed, result.message)
     }
 
-    func testContextCancel() {
-        XCTAssertTrue(tests.testContextCancel().passed)
+    func testContextCancel() throws {
+        let result = tests.testContextCancel()
+        XCTAssertTrue(result.passed, result.message)
     }
 }
 
