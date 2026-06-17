@@ -85,6 +85,19 @@ func asStreamCtx(_ p: UnsafeMutableRawPointer) -> UnsafeMutablePointer<StreamCon
     UnsafeMutablePointer<StreamContext>(OpaquePointer(p))
 }
 
+/// Converts a C string array (with its element count) to `[String]`, then frees the
+/// native array with `c2pa_free_string_array`. Returns `[]` for a nil array.
+func stringArrayFromC(_ ptr: UnsafePointer<UnsafePointer<CChar>?>?, count: Int) -> [String] {
+    guard let ptr, count > 0 else { return [] }
+    var result: [String] = []
+    result.reserveCapacity(count)
+    for i in 0..<count {
+        if let cStr = ptr[i] { result.append(String(cString: cStr)) }
+    }
+    c2pa_free_string_array(ptr, UInt(count))
+    return result
+}
+
 /// Infers the MIME type for a file URL from its path extension.
 ///
 /// - Parameter url: The file URL whose extension determines the MIME type.

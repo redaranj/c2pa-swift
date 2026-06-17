@@ -37,6 +37,9 @@ import Foundation
 /// - ``setRemote(url:)``
 /// - ``setBasePath(_:)``
 ///
+/// ### Introspection
+/// - ``supportedMimeTypes``
+///
 /// ### Adding Content
 /// - ``addResource(uri:stream:)``
 /// - ``addIngredient(json:format:from:)``
@@ -255,6 +258,15 @@ public final class Builder {
         _ = try guardNonNegative(
             Int64(c2pa_builder_set_base_path(ptr, url.path))
         )
+    }
+
+    /// The MIME types supported by the builder for signing.
+    ///
+    /// - Returns: An array of supported MIME type strings (e.g. `"image/jpeg"`).
+    public static var supportedMimeTypes: [String] {
+        var count: UInt = 0
+        let ptr = c2pa_builder_supported_mime_types(&count)
+        return stringArrayFromC(ptr, count: Int(count))
     }
 
     /// Adds a resource to the manifest.

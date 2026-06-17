@@ -460,6 +460,17 @@ public final class BuilderTests: TestImplementation {
         }
     }
 
+    public func testBuilderSupportedMimeTypes() -> TestResult {
+        let types = Builder.supportedMimeTypes
+        guard !types.isEmpty else {
+            return .failure("Builder Supported MIME Types", "Expected a non-empty list")
+        }
+        guard types.contains("image/jpeg") else {
+            return .failure("Builder Supported MIME Types", "Expected image/jpeg in \(types.prefix(10))")
+        }
+        return .success("Builder Supported MIME Types", "[PASS] \(types.count) types incl. image/jpeg")
+    }
+
     public func runAllTests() async -> [TestResult] {
         return [
             testBuilderAPI(),
@@ -472,7 +483,8 @@ public final class BuilderTests: TestImplementation {
             testBuilderSetIntentEdit(),
             testBuilderSetIntentUpdate(),
             testReadIngredient(),
-            testBuilderSetBasePath()
+            testBuilderSetBasePath(),
+            testBuilderSupportedMimeTypes()
         ]
     }
 }
