@@ -912,6 +912,11 @@ final class ContextTests: XCTestCase {
         let result = tests.testBuilderFromContext()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testSettingsFlowRoundtrip() throws {
+        let result = tests.testSettingsFlowRoundtrip()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Settings Definition Tests
