@@ -20,7 +20,7 @@ import Foundation
 /// embedded in media files. Use this class when you need fine-grained control
 /// over reading operations or when working with stream-based I/O.
 ///
-/// For simple file-based reading, consider using ``C2PA/readFile(at:dataDir:)`` instead.
+/// For simple file-based reading, consider using ``C2PA/readFile(at:)`` instead.
 ///
 /// ## Topics
 ///
@@ -46,7 +46,7 @@ import Foundation
 /// print("Manifest: \(manifestJSON)")
 /// ```
 ///
-/// - SeeAlso: ``Stream``, ``C2PA/readFile(at:dataDir:)``
+/// - SeeAlso: ``Stream``, ``C2PA/readFile(at:)``
 public final class Reader {
     private let ptr: UnsafeMutablePointer<C2paReader>
 
