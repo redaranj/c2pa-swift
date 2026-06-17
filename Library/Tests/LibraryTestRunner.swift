@@ -888,6 +888,24 @@ final class AssertionDefinitionTests: XCTestCase {
     }
 }
 
+// MARK: - Context Tests
+
+final class ContextTests: XCTestCase {
+    private let tests = TestShared.ContextTests()
+
+    func testContextDefaultCreation() {
+        XCTAssertTrue(tests.testContextDefaultCreation().passed)
+    }
+
+    func testContextFromSettings() {
+        XCTAssertTrue(tests.testContextFromSettings().passed)
+    }
+
+    func testContextCancel() {
+        XCTAssertTrue(tests.testContextCancel().passed)
+    }
+}
+
 // MARK: - Settings Definition Tests
 
 final class SettingsDefinitionTests: XCTestCase {
