@@ -60,7 +60,10 @@ public final class Reader {
     ///
     /// - Throws: ``C2PAError`` if the stream cannot be read or contains no valid manifest.
     public init(format: String, stream: Stream) throws {
-        ptr = try guardNotNull(c2pa_reader_from_stream(format, stream.rawPtr))
+        let context = try guardNotNull(c2pa_context_new())
+        defer { _ = c2pa_free(context) }
+        let base = try guardNotNull(c2pa_reader_from_context(context))
+        ptr = try guardNotNull(c2pa_reader_with_stream(base, format, stream.rawPtr))
     }
 
     /// Creates a reader from separate manifest data and media stream.
@@ -75,9 +78,13 @@ public final class Reader {
     ///
     /// - Throws: ``C2PAError`` if the manifest or stream cannot be processed.
     public init(format: String, stream: Stream, manifest: Data) throws {
+        let context = try guardNotNull(c2pa_context_new())
+        defer { _ = c2pa_free(context) }
+        let base = try guardNotNull(c2pa_reader_from_context(context))
         ptr = try manifest.withUnsafeBytes { buf in
             try guardNotNull(
-                c2pa_reader_from_manifest_data_and_stream(
+                c2pa_reader_with_manifest_data_and_stream(
+                    base,
                     format,
                     stream.rawPtr,
                     buf.bindMemory(to: UInt8.self).baseAddress!,
