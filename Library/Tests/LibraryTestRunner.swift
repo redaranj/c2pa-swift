@@ -143,6 +143,16 @@ final class BuilderTests: XCTestCase {
         let result = tests.testIngredientArchiveRoundtrip()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testNeedsPlaceholder() throws {
+        let result = tests.testNeedsPlaceholder()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testDataHashSigningWorkflow() throws {
+        let result = tests.testDataHashSigningWorkflow()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Reader Tests

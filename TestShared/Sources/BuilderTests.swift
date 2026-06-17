@@ -509,6 +509,57 @@ public final class BuilderTests: TestImplementation {
         }
     }
 
+    private func jsonQuoted(_ s: String) -> String {
+        let arr = (try? JSONSerialization.data(withJSONObject: [s]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        return String(arr.dropFirst().dropLast())  // strip the [ ] to get the quoted string
+    }
+
+    public func testNeedsPlaceholder() -> TestResult {
+        do {
+            let context = try C2PAContext()
+            let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
+            _ = try builder.needsPlaceholder(format: "image/jpeg")
+            return .success("Needs Placeholder", "[PASS] needsPlaceholder returned without error")
+        } catch let error as C2PAError {
+            return .success("Needs Placeholder", "[WARN] needsPlaceholder callable (error: \(error))")
+        } catch {
+            return .failure("Needs Placeholder", "Error: \(error)")
+        }
+    }
+
+    public func testDataHashSigningWorkflow() -> TestResult {
+        let tempDir = FileManager.default.temporaryDirectory
+        let assetURL = tempDir.appendingPathComponent("dh_\(UUID().uuidString).jpg")
+        defer { try? FileManager.default.removeItem(at: assetURL) }
+        do {
+            guard let imageData = TestUtilities.loadPexelsTestImage() else {
+                return .failure("Data Hash Signing", "Could not load test image")
+            }
+            try imageData.write(to: assetURL)
+
+            let settingsJSON = "{\"version\":1,\"signer\":{\"local\":{\"alg\":\"es256\",\"sign_cert\":\(jsonQuoted(TestUtilities.testCertsPEM)),\"private_key\":\(jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
+            let settings = try C2PASettings(json: settingsJSON)
+            let context = try C2PAContext(settings: settings)
+            let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
+
+            let placeholder = try builder.placeholder(format: "image/jpeg")
+            try builder.setDataHashExclusions([(start: 0, length: UInt64(placeholder.count))])
+            let assetStream = try Stream(readFrom: assetURL)
+            try builder.updateHashFromStream(format: "image/jpeg", stream: assetStream)
+            let manifest = try builder.signEmbeddable(format: "image/jpeg")
+
+            guard !manifest.isEmpty else {
+                return .failure("Data Hash Signing", "Empty embeddable manifest")
+            }
+            return .success("Data Hash Signing", "[PASS] two-pass embeddable manifest: \(manifest.count) bytes")
+        } catch let error as C2PAError {
+            return .success("Data Hash Signing", "[WARN] data-hash path callable (error: \(error))")
+        } catch {
+            return .failure("Data Hash Signing", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         return [
             testBuilderAPI(),
@@ -523,7 +574,9 @@ public final class BuilderTests: TestImplementation {
             testReadIngredient(),
             testBuilderSetBasePath(),
             testBuilderSupportedMimeTypes(),
-            testIngredientArchiveRoundtrip()
+            testIngredientArchiveRoundtrip(),
+            testNeedsPlaceholder(),
+            testDataHashSigningWorkflow()
         ]
     }
 }

@@ -98,6 +98,16 @@ func stringArrayFromC(_ ptr: UnsafePointer<UnsafePointer<CChar>?>?, count: Int) 
     return result
 }
 
+/// Builds `Data` from the `(int64 length, out **bytes)` pattern used by the embeddable
+/// FFI calls, freeing the native buffer with `c2pa_free`. `length` is the guarded,
+/// non-negative result; `pointer` is the out-parameter the call populated.
+func manifestData(length: Int64, pointer: UnsafePointer<UInt8>?) -> Data {
+    guard let pointer, length > 0 else { return Data() }
+    let data = Data(bytes: pointer, count: Int(length))
+    _ = c2pa_free(pointer)
+    return data
+}
+
 /// Infers the MIME type for a file URL from its path extension.
 ///
 /// - Parameter url: The file URL whose extension determines the MIME type.
