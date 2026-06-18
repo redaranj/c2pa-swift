@@ -372,7 +372,7 @@ public final class Signer {
     }
 
     deinit {
-        if !consumed { c2pa_signer_free(ptr) }
+        if !consumed { _ = c2pa_free(ptr) }
         retainedContext?.release()
     }
 
