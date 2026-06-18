@@ -176,7 +176,7 @@ public final class Builder {
         try self.init(context: context, manifestJSON: manifest.toJSON())
     }
 
-    deinit { c2pa_builder_free(ptr) }
+    deinit { _ = c2pa_free(ptr) }
 
     /// Sets the builder intent, specifying what kind of manifest to create.
     ///
@@ -410,7 +410,7 @@ public final class Builder {
         )
         guard let mp = manifestPtr else { return Data() }
         let data = Data(bytes: mp, count: Int(size))
-        c2pa_manifest_bytes_free(mp)
+        _ = c2pa_free(mp)
         return data
     }
 

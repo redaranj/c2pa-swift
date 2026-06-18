@@ -193,7 +193,7 @@ public final class ContextTests: TestImplementation {
             testSettingsFlowRoundtrip(),
             testProgressCallback(),
             testHTTPResolver(),
-            testURLSessionHTTPResolver(),
+            testURLSessionHTTPResolver()
         ]
     }
 }

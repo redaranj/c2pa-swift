@@ -30,7 +30,7 @@ public enum C2PA {
 
     public static var version: String {
         let p = c2pa_version()!
-        defer { c2pa_string_free(p) }
+        defer { _ = c2pa_free(p) }
         return String(cString: p)
     }
 

@@ -98,7 +98,7 @@ public final class Reader {
         }
     }
 
-    deinit { c2pa_reader_free(ptr) }
+    deinit { _ = c2pa_free(ptr) }
 
     /// Returns the manifest data as a JSON string.
     ///
@@ -181,7 +181,7 @@ public final class Reader {
         guard let cString = c2pa_reader_remote_url(ptr) else {
             return nil
         }
-        defer { c2pa_string_free(UnsafeMutablePointer(mutating: cString)) }
+        defer { _ = c2pa_free(cString) }
         return URL(string: String(cString: cString))
     }
 

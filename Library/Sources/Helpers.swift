@@ -18,7 +18,7 @@ import UniformTypeIdentifiers
 @inline(__always)
 func stringFromC(_ p: UnsafeMutablePointer<CChar>?) throws -> String {
     guard let p else { throw C2PAError.api(lastC2PAError()) }
-    defer { c2pa_string_free(p) }
+    defer { _ = c2pa_free(p) }
     guard let s = String(validatingCString: p) else { throw C2PAError.utf8 }
     return s
 }
@@ -26,7 +26,7 @@ func stringFromC(_ p: UnsafeMutablePointer<CChar>?) throws -> String {
 @inline(__always)
 func lastC2PAError() -> String {
     guard let p = c2pa_error() else { return "Unknown C2PA error" }
-    defer { c2pa_string_free(p) }
+    defer { _ = c2pa_free(p) }
     return String(cString: p)
 }
 
