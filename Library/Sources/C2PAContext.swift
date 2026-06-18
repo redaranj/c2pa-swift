@@ -14,6 +14,50 @@
 import C2PAC
 import Foundation
 
+/// A phase of a C2PA signing or reading operation. Maps the native `C2paProgressPhase`.
+public enum ProgressPhase {
+    case reading, verifyingManifest, verifyingSignature, verifyingIngredient,
+         verifyingAssetHash, addingIngredient, thumbnail, hashing, signing,
+         embedding, fetchingRemoteManifest, writing, fetchingOCSP, fetchingTimestamp
+    /// A phase value not known to this version of the wrapper.
+    case unknown
+
+    init(_ phase: C2paProgressPhase) {
+        switch phase {
+        case Reading: self = .reading
+        case VerifyingManifest: self = .verifyingManifest
+        case VerifyingSignature: self = .verifyingSignature
+        case VerifyingIngredient: self = .verifyingIngredient
+        case VerifyingAssetHash: self = .verifyingAssetHash
+        case AddingIngredient: self = .addingIngredient
+        case Thumbnail: self = .thumbnail
+        case Hashing: self = .hashing
+        case Signing: self = .signing
+        case Embedding: self = .embedding
+        case FetchingRemoteManifest: self = .fetchingRemoteManifest
+        case Writing: self = .writing
+        case FetchingOCSP: self = .fetchingOCSP
+        case FetchingTimestamp: self = .fetchingTimestamp
+        default: self = .unknown
+        }
+    }
+}
+
+/// A progress update delivered during a signing or reading operation.
+public struct ProgressUpdate {
+    /// The current operation phase.
+    public let phase: ProgressPhase
+    /// Monotonically increasing within a phase (starts at 1); rising values indicate liveness.
+    public let step: UInt32
+    /// `0` = indeterminate, `1` = single-shot, `> 1` = determinate (`step / total`).
+    public let total: UInt32
+}
+
+private final class ProgressCallbackBox {
+    let onProgress: (ProgressUpdate) -> Void
+    init(_ onProgress: @escaping (ProgressUpdate) -> Void) { self.onProgress = onProgress }
+}
+
 /// An immutable, shareable configuration context for creating builders.
 ///
 /// `C2PAContext` wraps the native context produced by ``C2PAContextBuilder``.
@@ -30,6 +74,9 @@ import Foundation
 /// ### Controlling Operations
 /// - ``cancel()``
 ///
+/// ### Progress
+/// - ``C2PAContextBuilder/setProgressCallback(_:)``
+///
 /// ## Example
 ///
 /// ```swift
@@ -41,10 +88,12 @@ import Foundation
 /// - SeeAlso: ``C2PAContextBuilder``, ``C2PASettings``, ``Builder``
 public final class C2PAContext {
     let ptr: UnsafeMutablePointer<C2paContext>
+    private let callbackBoxes: [AnyObject]
 
     /// Internal initializer that adopts an already-built native context.
-    init(ptr: UnsafeMutablePointer<C2paContext>) {
+    init(ptr: UnsafeMutablePointer<C2paContext>, callbackBoxes: [AnyObject] = []) {
         self.ptr = ptr
+        self.callbackBoxes = callbackBoxes
     }
 
     /// Creates a context with default settings.
@@ -92,6 +141,7 @@ public final class C2PAContext {
 /// ### Building a Context
 /// - ``init()``
 /// - ``setSettings(_:)``
+/// - ``setProgressCallback(_:)``
 /// - ``build()``
 ///
 /// ## Example
@@ -105,6 +155,7 @@ public final class C2PAContext {
 /// - SeeAlso: ``C2PAContext``, ``C2PASettings``
 public final class C2PAContextBuilder {
     private var ptr: UnsafeMutablePointer<C2paContextBuilder>?
+    private var callbackBoxes: [AnyObject] = []
 
     /// Creates a new, empty context builder.
     ///
@@ -134,6 +185,32 @@ public final class C2PAContextBuilder {
         return self
     }
 
+    /// Installs a closure that observes progress of operations run on the built context.
+    ///
+    /// The closure is called synchronously at operation checkpoints. To cancel an
+    /// in-progress operation, call ``C2PAContext/cancel()``.
+    ///
+    /// - Parameter onProgress: Called with each ``ProgressUpdate``.
+    /// - Returns: This builder, to allow chaining.
+    /// - Throws: ``C2PAError`` if the builder has already been built, or the callback cannot be set.
+    @discardableResult
+    public func setProgressCallback(_ onProgress: @escaping (ProgressUpdate) -> Void) throws -> Self {
+        guard let ptr else {
+            throw C2PAError.api("Context builder has already been built")
+        }
+        let box = ProgressCallbackBox(onProgress)
+        callbackBoxes.append(box)
+        let trampoline: ProgressCCallback = { context, phase, step, total in
+            guard let context else { return 1 }
+            let box = Unmanaged<ProgressCallbackBox>.fromOpaque(context).takeUnretainedValue()
+            box.onProgress(ProgressUpdate(phase: ProgressPhase(phase), step: step, total: total))
+            return 1  // always continue; cancellation is via C2PAContext.cancel()
+        }
+        _ = try guardNonNegative(Int64(
+            c2pa_context_builder_set_progress_callback(ptr, Unmanaged.passUnretained(box).toOpaque(), trampoline)))
+        return self
+    }
+
     /// Builds an immutable ``C2PAContext``.
     ///
     /// This consumes the builder; the builder must not be reused afterward.
@@ -143,7 +220,7 @@ public final class C2PAContextBuilder {
     /// - Throws: ``C2PAError`` if the builder has already been built, or the
     ///   context cannot be created.
     public func build() throws -> C2PAContext {
-        C2PAContext(ptr: try buildPtr())
+        C2PAContext(ptr: try buildPtr(), callbackBoxes: callbackBoxes)
     }
 
     /// Consumes the native builder and returns the built context pointer.
