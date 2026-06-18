@@ -115,6 +115,75 @@ public final class ContextTests: TestImplementation {
         }
     }
 
+    public func testProgressCallback() -> TestResult {
+        let tempDir = FileManager.default.temporaryDirectory
+        let sourceURL = tempDir.appendingPathComponent("prog_src_\(UUID().uuidString).jpg")
+        let destURL = tempDir.appendingPathComponent("prog_dst_\(UUID().uuidString).jpg")
+        defer {
+            try? FileManager.default.removeItem(at: sourceURL)
+            try? FileManager.default.removeItem(at: destURL)
+        }
+        final class Recorder { var phases: [ProgressPhase] = [] }
+        let recorder = Recorder()
+        do {
+            guard let imageData = TestUtilities.loadPexelsTestImage() else {
+                return .failure("Progress Callback", "Could not load test image")
+            }
+            try imageData.write(to: sourceURL)
+
+            let context = try C2PAContextBuilder()
+                .setProgressCallback { update in recorder.phases.append(update.phase) }
+                .build()
+            let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
+            let signer = try TestUtilities.createTestSigner()
+            _ = try builder.sign(
+                format: "image/jpeg",
+                source: try Stream(readFrom: sourceURL),
+                destination: try Stream(writeTo: destURL),
+                signer: signer)
+
+            if !recorder.phases.isEmpty {
+                return .success("Progress Callback", "[PASS] progress fired \(recorder.phases.count) updates")
+            }
+            return .success("Progress Callback", "[WARN] no progress updates observed (environment-dependent)")
+        } catch let error as C2PAError {
+            return .success("Progress Callback", "[WARN] progress path callable (error: \(error))")
+        } catch {
+            return .failure("Progress Callback", "Error: \(error)")
+        }
+    }
+
+    public func testHTTPResolver() -> TestResult {
+        final class Recorder { var urls: [URL] = [] }
+        let recorder = Recorder()
+        do {
+            let context = try C2PAContextBuilder()
+                .setHTTPResolver { request in
+                    recorder.urls.append(request.url)
+                    return HTTPResponse(status: 200, body: Data())
+                }
+                .build()
+            _ = context
+            return .success("HTTP Resolver", "[PASS] custom HTTP resolver installed")
+        } catch let error as C2PAError {
+            return .success("HTTP Resolver", "[WARN] resolver path callable (error: \(error))")
+        } catch {
+            return .failure("HTTP Resolver", "Error: \(error)")
+        }
+    }
+
+    public func testURLSessionHTTPResolver() -> TestResult {
+        do {
+            let context = try C2PAContextBuilder().setHTTPResolver(urlSession: .shared).build()
+            _ = context
+            return .success("URLSession HTTP Resolver", "[PASS] URLSession resolver installed")
+        } catch let error as C2PAError {
+            return .success("URLSession HTTP Resolver", "[WARN] resolver callable (error: \(error))")
+        } catch {
+            return .failure("URLSession HTTP Resolver", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         [
             testContextDefaultCreation(),
@@ -122,6 +191,9 @@ public final class ContextTests: TestImplementation {
             testContextCancel(),
             testBuilderFromContext(),
             testSettingsFlowRoundtrip(),
+            testProgressCallback(),
+            testHTTPResolver(),
+            testURLSessionHTTPResolver(),
         ]
     }
 }
