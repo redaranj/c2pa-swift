@@ -224,6 +224,11 @@ final class ReaderTests: XCTestCase {
         let result = tests.testReaderSupportedMimeTypes()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testReaderCrJSON() throws {
+        let result = tests.testReaderCrJSON()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Signing Tests
