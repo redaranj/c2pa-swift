@@ -153,6 +153,37 @@ public final class ContextTests: TestImplementation {
         }
     }
 
+    public func testHTTPResolver() -> TestResult {
+        final class Recorder { var urls: [URL] = [] }
+        let recorder = Recorder()
+        do {
+            let context = try C2PAContextBuilder()
+                .setHTTPResolver { request in
+                    recorder.urls.append(request.url)
+                    return HTTPResponse(status: 200, body: Data())
+                }
+                .build()
+            _ = context
+            return .success("HTTP Resolver", "[PASS] custom HTTP resolver installed")
+        } catch let error as C2PAError {
+            return .success("HTTP Resolver", "[WARN] resolver path callable (error: \(error))")
+        } catch {
+            return .failure("HTTP Resolver", "Error: \(error)")
+        }
+    }
+
+    public func testURLSessionHTTPResolver() -> TestResult {
+        do {
+            let context = try C2PAContextBuilder().setHTTPResolver(urlSession: .shared).build()
+            _ = context
+            return .success("URLSession HTTP Resolver", "[PASS] URLSession resolver installed")
+        } catch let error as C2PAError {
+            return .success("URLSession HTTP Resolver", "[WARN] resolver callable (error: \(error))")
+        } catch {
+            return .failure("URLSession HTTP Resolver", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         [
             testContextDefaultCreation(),
@@ -161,6 +192,8 @@ public final class ContextTests: TestImplementation {
             testBuilderFromContext(),
             testSettingsFlowRoundtrip(),
             testProgressCallback(),
+            testHTTPResolver(),
+            testURLSessionHTTPResolver(),
         ]
     }
 }

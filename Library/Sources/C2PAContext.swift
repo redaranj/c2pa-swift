@@ -58,6 +58,35 @@ private final class ProgressCallbackBox {
     init(_ onProgress: @escaping (ProgressUpdate) -> Void) { self.onProgress = onProgress }
 }
 
+/// An HTTP request the SDK needs resolved (remote manifest, OCSP, or timestamp fetch).
+public struct HTTPRequest {
+    /// The request URL.
+    public let url: URL
+    /// The HTTP method (e.g. `"GET"`).
+    public let method: String
+    /// Request headers.
+    public let headers: [String: String]
+    /// The request body, if any.
+    public let body: Data?
+}
+
+/// The HTTP response a resolver returns.
+public struct HTTPResponse {
+    /// The HTTP status code.
+    public let status: Int
+    /// The response body.
+    public let body: Data
+    public init(status: Int, body: Data) {
+        self.status = status
+        self.body = body
+    }
+}
+
+private final class HTTPResolverBox {
+    let resolve: (HTTPRequest) throws -> HTTPResponse
+    init(_ resolve: @escaping (HTTPRequest) throws -> HTTPResponse) { self.resolve = resolve }
+}
+
 /// An immutable, shareable configuration context for creating builders.
 ///
 /// `C2PAContext` wraps the native context produced by ``C2PAContextBuilder``.
@@ -142,6 +171,8 @@ public final class C2PAContext {
 /// - ``init()``
 /// - ``setSettings(_:)``
 /// - ``setProgressCallback(_:)``
+/// - ``setHTTPResolver(_:)``
+/// - ``setHTTPResolver(urlSession:)``
 /// - ``build()``
 ///
 /// ## Example
@@ -209,6 +240,106 @@ public final class C2PAContextBuilder {
         _ = try guardNonNegative(Int64(
             c2pa_context_builder_set_progress_callback(ptr, Unmanaged.passUnretained(box).toOpaque(), trampoline)))
         return self
+    }
+
+    /// Installs a custom resolver for HTTP requests the SDK makes (remote manifests,
+    /// OCSP, timestamps).
+    ///
+    /// The resolver is called synchronously and may be invoked from any thread, so its
+    /// closure must be thread-safe. Throwing an error fails the request.
+    ///
+    /// - Parameter resolve: Resolves an ``HTTPRequest`` to an ``HTTPResponse``.
+    /// - Returns: This builder, to allow chaining.
+    /// - Throws: ``C2PAError`` if the builder has already been built, or the resolver cannot be set.
+    @discardableResult
+    public func setHTTPResolver(_ resolve: @escaping (HTTPRequest) throws -> HTTPResponse) throws -> Self {
+        guard let ptr else {
+            throw C2PAError.api("Context builder has already been built")
+        }
+        let box = HTTPResolverBox(resolve)
+        callbackBoxes.append(box)
+        let trampoline: C2paHttpResolverCallback = { context, request, response in
+            guard let context, let request, let response else { return 1 }
+            let box = Unmanaged<HTTPResolverBox>.fromOpaque(context).takeUnretainedValue()
+            let req = request.pointee
+            guard let urlPtr = req.url, let url = URL(string: String(cString: urlPtr)) else {
+                _ = "Invalid request URL".withCString { c2pa_error_set_last($0) }
+                return 1
+            }
+            let method = req.method.map { String(cString: $0) } ?? "GET"
+            var headers: [String: String] = [:]
+            if let h = req.headers {
+                for line in String(cString: h).split(separator: "\n") {
+                    if let colon = line.firstIndex(of: ":") {
+                        let name = String(line[..<colon]).trimmingCharacters(in: .whitespaces)
+                        let value = String(line[line.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+                        if !name.isEmpty { headers[name] = value }
+                    }
+                }
+            }
+            let body: Data? = (req.body != nil && req.body_len > 0)
+                ? Data(bytes: req.body!, count: Int(req.body_len)) : nil
+            do {
+                let result = try box.resolve(HTTPRequest(url: url, method: method, headers: headers, body: body))
+                response.pointee.status = Int32(result.status)
+                if result.body.isEmpty {
+                    response.pointee.body = nil
+                    response.pointee.body_len = 0
+                } else {
+                    let buf = malloc(result.body.count)!.assumingMemoryBound(to: UInt8.self)
+                    result.body.copyBytes(to: buf, count: result.body.count)
+                    response.pointee.body = buf
+                    response.pointee.body_len = UInt(result.body.count)
+                }
+                return 0
+            } catch {
+                _ = String(describing: error).withCString { c2pa_error_set_last($0) }
+                return 1
+            }
+        }
+        let resolver = try guardNotNull(
+            c2pa_http_resolver_create(Unmanaged.passUnretained(box).toOpaque(), trampoline))
+        _ = try guardNonNegative(Int64(c2pa_context_builder_set_http_resolver(ptr, resolver)))
+        return self
+    }
+
+    /// Installs a built-in HTTP resolver backed by `URLSession`.
+    ///
+    /// Performs each request synchronously (the native resolver call blocks until the
+    /// response is ready). Suitable for the common case of fetching remote resources.
+    ///
+    /// - Parameter urlSession: The session to use. Defaults to `.shared`.
+    /// - Returns: This builder, to allow chaining.
+    /// - Throws: ``C2PAError`` if the resolver cannot be set.
+    @discardableResult
+    public func setHTTPResolver(urlSession: URLSession = .shared) throws -> Self {
+        try setHTTPResolver { request in
+            var resultData: Data?
+            var resultStatus = 0
+            var resultError: Error?
+            let semaphore = DispatchSemaphore(value: 0)
+            var urlRequest = URLRequest(url: request.url)
+            urlRequest.httpMethod = request.method
+            for (name, value) in request.headers {
+                urlRequest.setValue(value, forHTTPHeaderField: name)
+            }
+            urlRequest.httpBody = request.body
+            let task = urlSession.dataTask(with: urlRequest) { data, response, error in
+                if let error {
+                    resultError = error
+                } else {
+                    resultData = data ?? Data()
+                    resultStatus = (response as? HTTPURLResponse)?.statusCode ?? 0
+                }
+                semaphore.signal()
+            }
+            task.resume()
+            semaphore.wait()
+            if let resultError {
+                throw C2PAError.api("HTTP resolver request failed: \(resultError)")
+            }
+            return HTTPResponse(status: resultStatus, body: resultData ?? Data())
+        }
     }
 
     /// Builds an immutable ``C2PAContext``.

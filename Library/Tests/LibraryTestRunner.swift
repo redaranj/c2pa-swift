@@ -937,6 +937,16 @@ final class ContextTests: XCTestCase {
         let result = tests.testProgressCallback()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testHTTPResolver() throws {
+        let result = tests.testHTTPResolver()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testURLSessionHTTPResolver() throws {
+        let result = tests.testURLSessionHTTPResolver()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Settings Definition Tests
