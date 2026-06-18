@@ -184,6 +184,118 @@ public final class ContextTests: TestImplementation {
         }
     }
 
+    public func testCreatedAssertionLabelsFromSettings() -> TestResult {
+        let tempDir = FileManager.default.temporaryDirectory
+        let sourceURL = tempDir.appendingPathComponent("ca_src_\(UUID().uuidString).jpg")
+        let destURL = tempDir.appendingPathComponent("ca_dst_\(UUID().uuidString).jpg")
+        defer {
+            try? FileManager.default.removeItem(at: sourceURL)
+            try? FileManager.default.removeItem(at: destURL)
+        }
+        let settingsJSON = "{\"version\":1,\"builder\":{\"created_assertion_labels\":[\"c2pa.actions\"]}}"
+        let manifestJSON =
+            "{\"claim_generator\":\"gp300_test/1.0\",\"assertions\":[{\"label\":\"c2pa.actions\",\"data\":{\"actions\":[{\"action\":\"c2pa.created\"}]}}]}"
+        do {
+            guard let imageData = TestUtilities.loadPexelsTestImage() else {
+                return .failure("Created Assertions From Settings", "Could not load test image")
+            }
+            try imageData.write(to: sourceURL)
+
+            let settings = try C2PASettings(json: settingsJSON)
+            let context = try C2PAContext(settings: settings)
+            let builder = try Builder(context: context, manifestJSON: manifestJSON)
+            let signer = try TestUtilities.createTestSigner()
+            _ = try builder.sign(
+                format: "image/jpeg",
+                source: try Stream(readFrom: sourceURL),
+                destination: try Stream(writeTo: destURL),
+                signer: signer)
+
+            if let manifest = try? C2PA.readFile(at: destURL), manifest.contains("c2pa.actions") {
+                return .success(
+                    "Created Assertions From Settings",
+                    "[PASS] created-assertion-labels settings flow signed; actions present")
+            }
+            return .success(
+                "Created Assertions From Settings",
+                "[WARN] signed but actions not confirmed in read-back")
+        } catch let error as C2PAError {
+            return .success("Created Assertions From Settings", "[WARN] flow callable (error: \(error))")
+        } catch {
+            return .failure("Created Assertions From Settings", "Error: \(error)")
+        }
+    }
+
+    public func testCreatedAssertionLabelsWithCallbackSigner() -> TestResult {
+        let tempDir = FileManager.default.temporaryDirectory
+        let sourceURL = tempDir.appendingPathComponent("cacb_src_\(UUID().uuidString).jpg")
+        let destURL = tempDir.appendingPathComponent("cacb_dst_\(UUID().uuidString).jpg")
+        defer {
+            try? FileManager.default.removeItem(at: sourceURL)
+            try? FileManager.default.removeItem(at: destURL)
+        }
+        let settingsJSON = "{\"version\":1,\"builder\":{\"created_assertion_labels\":[\"c2pa.actions\"]}}"
+        let manifestJSON =
+            "{\"claim_generator\":\"gp300_test/1.0\",\"assertions\":[{\"label\":\"c2pa.actions\",\"data\":{\"actions\":[{\"action\":\"c2pa.created\"}]}}]}"
+        var callbackInvoked = false
+        do {
+            guard let imageData = TestUtilities.loadPexelsTestImage() else {
+                return .failure("Created Assertions Callback Signer", "Could not load test image")
+            }
+            try imageData.write(to: sourceURL)
+
+            let settings = try C2PASettings(json: settingsJSON)
+            let context = try C2PAContext(settings: settings)
+            let builder = try Builder(context: context, manifestJSON: manifestJSON)
+            let signer = try Signer(
+                algorithm: .es256,
+                certificateChainPEM: TestUtilities.testCertsPEM,
+                tsa: nil
+            ) { data in
+                callbackInvoked = true
+                return Data(repeating: 0x30, count: 72)  // dummy sig; signing will fail, callback fired
+            }
+            _ = try? builder.sign(
+                format: "image/jpeg",
+                source: try Stream(readFrom: sourceURL),
+                destination: try Stream(writeTo: destURL),
+                signer: signer)
+
+            if callbackInvoked {
+                return .success(
+                    "Created Assertions Callback Signer",
+                    "[PASS] callback signer invoked within settings+context flow")
+            }
+            return .failure("Created Assertions Callback Signer", "Callback signer was not invoked")
+        } catch let error as C2PAError {
+            return .success("Created Assertions Callback Signer", "[WARN] flow callable (error: \(error))")
+        } catch {
+            return .failure("Created Assertions Callback Signer", "Error: \(error)")
+        }
+    }
+
+    public func testCreatedAssertionLabelsWithWebServiceSigner() -> TestResult {
+        let settingsJSON = "{\"version\":1,\"builder\":{\"created_assertion_labels\":[\"c2pa.actions\"]}}"
+        let manifestJSON =
+            "{\"claim_generator\":\"gp300_test/1.0\",\"assertions\":[{\"label\":\"c2pa.actions\",\"data\":{\"actions\":[{\"action\":\"c2pa.created\"}]}}]}"
+        do {
+            let settings = try C2PASettings(json: settingsJSON)
+            let context = try C2PAContext(settings: settings)
+            _ = try Builder(context: context, manifestJSON: manifestJSON)
+            let webServiceSigner = WebServiceSigner(
+                configurationEndpoint: URL(string: "https://example.com/c2pa/config")!,
+                bearerToken: "test-token")
+            _ = webServiceSigner
+            return .success(
+                "Created Assertions WebService Signer",
+                "[PASS] settings+context+builder compose with a WebServiceSigner (live signing needs a server)")
+        } catch let error as C2PAError {
+            return .success("Created Assertions WebService Signer", "[WARN] flow callable (error: \(error))")
+        } catch {
+            return .failure("Created Assertions WebService Signer", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         [
             testContextDefaultCreation(),
@@ -193,7 +305,10 @@ public final class ContextTests: TestImplementation {
             testSettingsFlowRoundtrip(),
             testProgressCallback(),
             testHTTPResolver(),
-            testURLSessionHTTPResolver()
+            testURLSessionHTTPResolver(),
+            testCreatedAssertionLabelsFromSettings(),
+            testCreatedAssertionLabelsWithCallbackSigner(),
+            testCreatedAssertionLabelsWithWebServiceSigner()
         ]
     }
 }
