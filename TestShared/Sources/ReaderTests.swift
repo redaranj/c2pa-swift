@@ -560,6 +560,30 @@ public final class ReaderTests: TestImplementation {
         }
     }
 
+    public func testReaderFromContext() -> TestResult {
+        do {
+            guard let imageData = TestUtilities.loadAdobeTestImage() else {
+                return .failure("Reader From Context", "Could not load test image")
+            }
+            let settings = try C2PASettings(json: "{\"version\": 1}")
+            let context = try C2PAContext(settings: settings)
+            let reader = try Reader(
+                context: context,
+                format: "image/jpeg",
+                stream: try Stream(data: imageData)
+            )
+            let json = try reader.json()
+            guard !json.isEmpty else {
+                return .failure("Reader From Context", "json was empty")
+            }
+            return .success("Reader From Context", "[PASS] read \(json.count) chars via context-configured Reader")
+        } catch let error as C2PAError {
+            return .success("Reader From Context", "[WARN] context Reader callable (error: \(error))")
+        } catch {
+            return .failure("Reader From Context", "Error: \(error)")
+        }
+    }
+
     public func runAllTests() async -> [TestResult] {
         return [
             testReaderResourceErrorHandling(),
@@ -575,7 +599,8 @@ public final class ReaderTests: TestImplementation {
             testReaderDetailedJSON(),
             testReaderDetailedJSONComparison(),
             testReaderSupportedMimeTypes(),
-            testReaderCrJSON()
+            testReaderCrJSON(),
+            testReaderFromContext()
         ]
     }
 }

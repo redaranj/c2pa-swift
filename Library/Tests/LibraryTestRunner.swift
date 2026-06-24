@@ -229,6 +229,11 @@ final class ReaderTests: XCTestCase {
         let result = tests.testReaderCrJSON()
         XCTAssertTrue(result.passed, result.message)
     }
+
+    func testReaderFromContext() throws {
+        let result = tests.testReaderFromContext()
+        XCTAssertTrue(result.passed, result.message)
+    }
 }
 
 // MARK: - Signing Tests
