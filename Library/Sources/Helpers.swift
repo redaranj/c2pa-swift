@@ -13,6 +13,7 @@
 
 import C2PAC
 import Foundation
+import UniformTypeIdentifiers
 
 @inline(__always)
 func stringFromC(_ p: UnsafeMutablePointer<CChar>?) throws -> String {
@@ -84,6 +85,19 @@ func asStreamCtx(_ p: UnsafeMutableRawPointer) -> UnsafeMutablePointer<StreamCon
     UnsafeMutablePointer<StreamContext>(OpaquePointer(p))
 }
 
+/// Converts a C string array (with its element count) to `[String]`, then frees the
+/// native array with `c2pa_free_string_array`. Returns `[]` for a nil array.
+func stringArrayFromC(_ ptr: UnsafePointer<UnsafePointer<CChar>?>?, count: Int) -> [String] {
+    guard let ptr, count > 0 else { return [] }
+    var result: [String] = []
+    result.reserveCapacity(count)
+    for i in 0..<count {
+        if let cStr = ptr[i] { result.append(String(cString: cStr)) }
+    }
+    c2pa_free_string_array(ptr, UInt(count))
+    return result
+}
+
 /// Builds `Data` from the `(int64 length, out **bytes)` pattern used by the embeddable
 /// FFI calls, freeing the native buffer with `c2pa_free`. `length` is the guarded,
 /// non-negative result; `pointer` is the out-parameter the call populated.
@@ -92,4 +106,16 @@ func manifestData(length: Int64, pointer: UnsafePointer<UInt8>?) -> Data {
     let data = Data(bytes: pointer, count: Int(length))
     _ = c2pa_free(pointer)
     return data
+}
+
+/// Infers the MIME type for a file URL from its path extension.
+///
+/// - Parameter url: The file URL whose extension determines the MIME type.
+/// - Returns: The preferred MIME type (e.g. `"image/jpeg"`).
+/// - Throws: ``C2PAError`` if the extension maps to no known type.
+func inferredMIMEType(for url: URL) throws -> String {
+    guard let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType else {
+        throw C2PAError.api("Unsupported or unknown file type for extension '\(url.pathExtension)'")
+    }
+    return mime
 }

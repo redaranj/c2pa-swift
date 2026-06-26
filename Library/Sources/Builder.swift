@@ -35,10 +35,16 @@ import Foundation
 /// - ``addAction(_:)``
 /// - ``setNoEmbed()``
 /// - ``setRemote(url:)``
+/// - ``setBasePath(_:)``
+///
+/// ### Introspection
+/// - ``supportedMimeTypes``
 ///
 /// ### Adding Content
 /// - ``addResource(uri:stream:)``
 /// - ``addIngredient(json:format:from:)``
+/// - ``addIngredient(fromArchive:)``
+/// - ``writeIngredientArchive(id:to:)``
 ///
 /// ### Signing and Output
 /// - ``sign(format:source:destination:signer:)``
@@ -260,6 +266,26 @@ public final class Builder {
         )
     }
 
+    /// Sets the base directory used to resolve relative resource paths in the manifest.
+    ///
+    /// - Parameter url: A directory URL used as the base path for resolving resources.
+    ///
+    /// - Throws: ``C2PAError`` if the base path cannot be set.
+    public func setBasePath(_ url: URL) throws {
+        _ = try guardNonNegative(
+            Int64(c2pa_builder_set_base_path(ptr, url.path))
+        )
+    }
+
+    /// The MIME types supported by the builder for signing.
+    ///
+    /// - Returns: An array of supported MIME type strings (e.g. `"image/jpeg"`).
+    public static var supportedMimeTypes: [String] {
+        var count: UInt = 0
+        let ptr = c2pa_builder_supported_mime_types(&count)
+        return stringArrayFromC(ptr, count: Int(count))
+    }
+
     /// Adds a resource to the manifest.
     ///
     /// Resources are auxiliary files (like thumbnails or metadata) that are
@@ -288,11 +314,37 @@ public final class Builder {
     ///   - stream: A ``Stream`` containing the ingredient file data.
     ///
     /// - Throws: ``C2PAError`` if the ingredient cannot be added.
-    ///
-    /// - SeeAlso: ``C2PA/readIngredient(at:dataDir:)``
     public func addIngredient(json: String, format: String, from stream: Stream) throws {
         _ = try guardNonNegative(
             Int64(c2pa_builder_add_ingredient_from_stream(ptr, json, format, stream.rawPtr))
+        )
+    }
+
+    /// Adds an ingredient previously exported as a C2PA ingredient archive.
+    ///
+    /// - Parameter stream: A ``Stream`` containing a C2PA ingredient archive.
+    ///
+    /// - Throws: ``C2PAError`` if the archive cannot be read or added.
+    ///
+    /// - SeeAlso: ``writeIngredientArchive(id:to:)``
+    public func addIngredient(fromArchive stream: Stream) throws {
+        _ = try guardNonNegative(
+            Int64(c2pa_builder_add_ingredient_from_archive(ptr, stream.rawPtr))
+        )
+    }
+
+    /// Writes a previously added ingredient out as a standalone C2PA ingredient archive.
+    ///
+    /// - Parameters:
+    ///   - id: The identifier of the ingredient to export.
+    ///   - stream: A ``Stream`` where the ingredient archive will be written.
+    ///
+    /// - Throws: ``C2PAError`` if the ingredient cannot be written.
+    ///
+    /// - SeeAlso: ``addIngredient(fromArchive:)``
+    public func writeIngredientArchive(id: String, to stream: Stream) throws {
+        _ = try guardNonNegative(
+            Int64(c2pa_builder_write_ingredient_archive(ptr, id, stream.rawPtr))
         )
     }
 
