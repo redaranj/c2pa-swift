@@ -128,3 +128,53 @@ jobs:
           else
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           fi
+
+  sync:
+    name: Build against ${{ needs.resolve.outputs.version }}
+    needs: resolve
+    if: needs.resolve.outputs.proceed == 'true'
+    runs-on: macos-15
+    outputs:
+      result: ${{ steps.build.outcome }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+
+      - name: Build the tracking branch
+        env:
+          BRANCH: ${{ inputs.branch }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Hard-reset from main: the branch is main plus exactly one commit.
+          git checkout -B "$BRANCH" origin/main
+
+          # BSD sed -- this job runs on macOS.
+          sed -i '' "s/^C2PA_VERSION = .*/C2PA_VERSION = ${VERSION}/" Configurations/Base.xcconfig
+          grep '^C2PA_VERSION' Configurations/Base.xcconfig
+
+          git add Configurations/Base.xcconfig
+          git commit \
+            -m "chore: track c2pa-rs ${VERSION}" \
+            -m "c2pa-track: ${MAIN_SHA} ${VERSION}"
+
+      - name: Run library tests
+        id: build
+        continue-on-error: true
+        run: make test-library
+
+      # Pushed regardless of outcome: the branch reflects upstream reality,
+      # including when it is broken. That is the signal.
+      - name: Force-push the tracking branch
+        if: ${{ inputs.dry_run == false }}
+        run: git push --force origin "${{ inputs.branch }}"
