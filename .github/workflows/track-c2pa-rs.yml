@@ -198,7 +198,10 @@ jobs:
         run: make test-library DESTINATION="$SIMULATOR_DESTINATION"
 
       - name: Upload test results
-        if: always()
+        # Only on red. Unlike test.yml, where a human is reading one specific
+        # PR run, this workflow runs unattended several times a day per branch
+        # and the bundle is only of interest when something actually broke.
+        if: steps.build.outcome != 'success'
         uses: actions/upload-artifact@v4
         with:
           name: track-c2pa-rs-TestResults-${{ needs.resolve.outputs.version }}-${{ github.run_id }}
