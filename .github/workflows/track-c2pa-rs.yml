@@ -1,0 +1,130 @@
+# Reusable sync loop for the c2pa-rs tracking branches. Invoked by
+# track-c2pa-rs-stable.yml and track-c2pa-rs-rc.yml.
+#
+# Each tracking branch is always origin/main plus exactly one pin-bump commit,
+# hard-reset on every sync. Nothing ever originates on a tracking branch, so
+# a fix is always an ordinary PR to main; the next sync picks it up.
+name: Track c2pa-rs
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: "stable or rc"
+        required: true
+        type: string
+      branch:
+        description: "Tracking branch to force-push"
+        required: true
+        type: string
+      source_repo:
+        description: "Upstream repository to read releases from"
+        required: false
+        default: contentauth/c2pa-rs
+        type: string
+      version:
+        description: "Pin this exact version instead of resolving one"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Resolve and build, but do not push or file issues"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  resolve:
+    name: Resolve target version
+    # Reading the releases API needs no macOS runner.
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      proceed: ${{ steps.guard.outputs.proceed }}
+      main_sha: ${{ steps.guard.outputs.main_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve target version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          PINNED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$PINNED" ]; then
+            echo "Using explicitly requested version $PINNED"
+            echo "version=$PINNED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # --paginate --slurp yields an array of per-page arrays; add flattens it.
+          gh api "repos/${SOURCE_REPO}/releases" --paginate --slurp \
+            | jq 'add' > releases.json
+
+          stable_arg=""
+          if [ "$MODE" = "rc" ]; then
+            stable="$(.github/scripts/resolve-c2pa-version.sh --mode stable < releases.json)"
+            echo "Current stable release: $stable"
+            stable_arg="--stable $stable"
+          fi
+
+          set +e
+          version="$(.github/scripts/resolve-c2pa-version.sh --mode "$MODE" $stable_arg < releases.json)"
+          code=$?
+          set -e
+
+          if [ "$code" -eq 3 ]; then
+            echo "No train in flight; nothing to track."
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$code" -eq 0 ] || exit "$code"
+
+          echo "Resolved target version: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight release assets
+        if: steps.resolve.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${SOURCE_REPO}/releases/tags/c2pa-${VERSION}" \
+            | .github/scripts/check-c2pa-assets.sh "$VERSION"
+
+      - name: Idempotence guard
+        id: guard
+        if: steps.resolve.outputs.version != ''
+        env:
+          BRANCH: ${{ inputs.branch }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          main_sha="$(git rev-parse origin/main)"
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+
+          # The sync commit carries this marker in its body, so the branch tip
+          # itself records the (main SHA, version) pair it was built from.
+          # Without this guard, schedule and push:main both firing produce
+          # redundant force-pushes and duplicate CI runs.
+          marker="c2pa-track: ${main_sha} ${VERSION}"
+          if git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1 \
+             && git log -1 --format=%B "origin/${BRANCH}" | grep -Fq "$marker"; then
+            echo "Branch already at (${main_sha}, ${VERSION}); nothing to do."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
