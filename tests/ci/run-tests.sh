@@ -59,13 +59,18 @@ check_assets() {
 assert "stable: semver-max wins over list order" \
   "v0.90.0" 0 resolve releases.json --mode stable
 
-# Release candidates must never be selected in stable mode.
+# Release candidates must never be selected in stable mode. This runs against
+# releases.json, whose 0.91.0-rc.2 outranks the correct 0.90.0 answer -- so a
+# regression that stopped excluding rc builds would return the rc and fail here.
 assert "stable: ignores rc prereleases" \
-  "v0.90.0" 0 resolve releases-no-train.json --mode stable
+  "v0.90.0" 0 resolve releases.json --mode stable
 
 # Only the c2pa-v* tag family is considered; c2pa-c-ffi-v* and c2patool-v*
 # share the repo but are not what library-release.yml builds binaries from.
-# c2pa-c-ffi-v0.90.0 and c2patool-v0.27.0 in the fixture must not leak through.
+# c2pa-c-ffi-v0.91.0 in the fixture outranks the correct answer, so leaking
+# that tag family would return 0.91.0 and fail here. It is also a real upstream
+# scenario: release-plz is documented to sometimes cut a crate without cutting
+# the dependent, leaving c2pa-c-ffi ahead of c2pa with no c2pa binaries built.
 assert "stable: ignores other crates' tags" \
   "v0.90.0" 0 resolve releases.json --mode stable
 
