@@ -8,7 +8,8 @@
 #   resolve-c2pa-version.sh --mode rc --stable vX.Y.Z
 #
 # Exit codes:
-#   0  resolved; the tag suffix (e.g. v0.91.0-rc.2) is on stdout
+#   0  resolved; a v-prefixed version (e.g. v0.91.0-rc.2) on stdout -- built
+#      from the matching c2pa-v* tag, not printed verbatim as its suffix
 #   3  nothing to track -- the idle-train no-op; stdout empty
 #   1  usage or input error
 
@@ -23,8 +24,16 @@ mode=""
 stable=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --mode)   mode="${2:-}";   shift 2 ;;
-    --stable) stable="${2:-}"; shift 2 ;;
+    --mode)
+      case "${2:-}" in
+        ''|--*) echo "--mode requires a value" >&2; usage ;;
+      esac
+      mode="$2"; shift 2 ;;
+    --stable)
+      case "${2:-}" in
+        ''|--*) echo "--stable requires a value" >&2; usage ;;
+      esac
+      stable="$2"; shift 2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
   esac
 done
@@ -33,9 +42,31 @@ case "$mode" in
   stable) ;;
   rc)
     [ -n "$stable" ] || { echo "--mode rc requires --stable" >&2; exit 1; }
+    if ! printf '%s\n' "$stable" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+      echo "--stable value '$stable' is not shaped like vX.Y.Z" >&2
+      exit 1
+    fi
     ;;
   *) usage ;;
 esac
+
+# Read stdin exactly once so it can be validated before anything downstream
+# (jq, awk) sees it. A CI-scheduled fetch that failed outright must not be
+# silently indistinguishable from "checked and there is nothing to track".
+raw_input="$(cat)"
+
+if [ -z "$(printf '%s' "$raw_input" | tr -d '[:space:]')" ]; then
+  echo "no input: stdin was empty (did the release fetch fail?)" >&2
+  exit 1
+fi
+
+# `if !` keeps a jq failure (bad JSON, or valid JSON that isn't an array) from
+# tripping set -e with jq's own exit status -- it is checked as a condition,
+# not run as a bare statement, so the failure is ours to handle below.
+if ! printf '%s' "$raw_input" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  echo "invalid input: stdin is not a JSON array (likely a GitHub API error response, e.g. a rate-limit body, rather than a releases list)" >&2
+  exit 1
+fi
 
 # Consider only the c2pa-v* tag family. Per c2pa-rs docs/release-process.md it
 # is library-release.yml, triggered on c2pa-v* tags, that builds the Apple
@@ -45,16 +76,24 @@ esac
 # Selection is by tag SHAPE rather than the .prerelease flag, so a mis-flagged
 # upstream release cannot put a release candidate on the stable branch.
 # Drafts are excluded: they carry no downloadable assets.
-tags="$(jq -r '.[] | select(.draft != true) | .tag_name' | sed -n 's/^c2pa-v//p')"
+tags="$(printf '%s' "$raw_input" | jq -r '.[] | select(.draft != true) | .tag_name' | sed -n 's/^c2pa-v//p')"
 
 case "$mode" in
-  stable)
-    candidates="$(printf '%s\n' "$tags" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)"
-    ;;
-  rc)
-    candidates="$(printf '%s\n' "$tags" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$' || true)"
-    ;;
+  stable) pattern='^[0-9]+\.[0-9]+\.[0-9]+$' ;;
+  rc)     pattern='^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$' ;;
 esac
+
+# grep exits 1 for "no match" (normal -- falls through to the "nothing to
+# track" exit 3 below) and >1 for a real tooling/regex error, which must not
+# be swallowed into the same "nothing to track" outcome.
+candidates="$(printf '%s\n' "$tags" | grep -E "$pattern")" || {
+  grep_status=$?
+  if [ "$grep_status" -gt 1 ]; then
+    echo "grep failed while selecting candidate tags (exit $grep_status)" >&2
+    exit 1
+  fi
+  candidates=""
+}
 
 [ -n "$candidates" ] || exit 3
 
