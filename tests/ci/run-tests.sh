@@ -113,5 +113,24 @@ assert "usage: rejects --mode with missing value" \
 assert "usage: rejects malformed --stable value" \
   "" 1 resolve releases.json --mode rc --stable garbage
 
+# --- resolve: rc mode ---
+
+# Highest rc build of the in-flight train.
+assert "rc: picks highest rc build" \
+  "v0.91.0-rc.2" 0 resolve releases.json --mode rc --stable v0.90.0
+
+# Skip-if-empty: upstream skips the train when nothing breaking is queued.
+# Exit 3 is the idle-train no-op, not an error.
+assert "rc: no train in flight exits 3" \
+  "" 3 resolve releases-no-train.json --mode rc --stable v0.90.0
+
+# An rc whose base version is already published is a stale leftover from a
+# promoted train and must not be tracked.
+assert "rc: ignores rc at or below current stable" \
+  "" 3 resolve releases.json --mode rc --stable v0.91.0
+
+assert "rc: requires --stable" \
+  "" 1 resolve releases.json --mode rc
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
