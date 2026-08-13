@@ -7,7 +7,9 @@ name: Track c2pa-rs rc
 
 on:
   schedule:
-    - cron: "0 */6 * * *"
+    # TEMPORARY: every 30 minutes for fork validation. Revert to "0 */6 * * *"
+    # before proposing this upstream -- see docs/ci/c2pa-rs-tracking.md.
+    - cron: "*/30 * * * *"
   push:
     branches: [main]
   workflow_dispatch:

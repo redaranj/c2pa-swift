@@ -44,6 +44,19 @@ GitHub disables `schedule` on forks by default and auto-disables it after 60
 days of repository inactivity, so the scheduled path is exercised only after
 the workflows land upstream.
 
+Both callers must live on the fork's default branch before anything runs. That
+applies to all three triggers, not just the cron: `schedule` only ever fires
+from the default branch, and `workflow_dispatch` will not even appear in the
+Actions tab until the file is there.
+
+### Temporary test cadence
+
+The cron in both callers is currently `*/30 * * * *` (every 30 minutes) for
+fork validation. **Revert both to `0 */6 * * *` before proposing this
+upstream.** Six-hourly is the intended cadence: upstream publishes additive
+releases on roughly a one-day bake and cuts a breaking train every two months,
+so a 30-minute poll buys nothing in production and just burns Actions minutes.
+
 ## Adding or removing an Apple target
 
 `.github/scripts/check-c2pa-assets.sh` holds the list of required per-target
