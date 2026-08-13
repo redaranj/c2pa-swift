@@ -16,8 +16,15 @@ fail=0
 assert() {
   local name="$1" expected="$2" expected_code="$3"
   shift 3
-  local actual code
-  actual="$("$@" 2>/dev/null)"
+  # Declared separately from the assignment below: `local actual="$(...)"`
+  # would make `local` itself the last command, so $? would always read 0.
+  local actual code errors
+  errors="$(mktemp)"
+  # stderr is kept rather than discarded, and echoed on failure only. Without
+  # it a script that crashed (unbound variable, missing jq, unreadable fixture)
+  # is indistinguishable from one that correctly reported nothing and exited
+  # non-zero -- both render as empty stdout with the same exit code.
+  actual="$("$@" 2>"$errors")"
   code=$?
   if [ "$actual" = "$expected" ] && [ "$code" = "$expected_code" ]; then
     printf 'ok   %s\n' "$name"
@@ -25,8 +32,12 @@ assert() {
   else
     printf 'FAIL %s\n       expected: %s (exit %s)\n       actual:   %s (exit %s)\n' \
       "$name" "'$expected'" "$expected_code" "'$actual'" "$code"
+    if [ -s "$errors" ]; then
+      printf '       stderr:   %s\n' "$(tr '\n' ' ' < "$errors")"
+    fi
     fail=$((fail + 1))
   fi
+  rm -f "$errors"
 }
 
 resolve() {
