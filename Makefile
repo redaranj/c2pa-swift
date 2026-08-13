@@ -3,7 +3,7 @@
         tests-with-server workspace-build test-library test-library-macos lint signing-server-wait signing-server-verify \
         test-summary coverage-lcov validate-version release-tests \
         package-swift update-package-swift create-release-tag docs \
-        use-dev-package use-release-package
+        use-dev-package use-release-package test-ci-scripts
 
 # Build configuration
 CONFIGURATION := Release
@@ -141,8 +141,13 @@ tests: test-app
 		-enableCodeCoverage YES \
 		$(TEST_CODE_SIGN_FLAGS)
 
-# Quick test run (alias for test-library)
-test: test-library
+# Run the CI helper script tests (no Xcode required)
+test-ci-scripts:
+	@echo "Running CI helper script tests..."
+	@./tests/ci/run-tests.sh
+
+# Quick test run
+test: test-ci-scripts test-library
 
 # Generate code coverage report
 coverage: library
