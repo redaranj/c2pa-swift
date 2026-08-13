@@ -238,9 +238,65 @@ jobs:
             echo "result=success" >> "$GITHUB_OUTPUT"
           fi
 
+  # The full simulator matrix runs once, only for the stable tracker, only when
+  # test-library already passed AND the branch was actually pushed, and only
+  # immediately before promotion.
+  #
+  # This must be a job here rather than a push-triggered run: pushes made with
+  # GITHUB_TOKEN do not trigger other workflows, and track/** is excluded from
+  # test.yml's push trigger anyway.
+  matrix:
+    name: Full matrix
+    needs: [resolve, sync]
+    if: ${{ inputs.mode == 'stable' && needs.sync.outputs.result == 'success' && inputs.dry_run != true }}
+    uses: ./.github/workflows/test.yml
+    with:
+      ref: ${{ inputs.branch }}
+
+  promote:
+    name: Open promotion PR
+    needs: [resolve, sync, matrix]
+    if: ${{ inputs.mode == 'stable' && needs.sync.outputs.result == 'success' && needs.matrix.result == 'success' && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open or update the promotion PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ inputs.branch }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          title="Update core C2PA SDK to ${VERSION}"
+
+          {
+            echo "Bumps \`C2PA_VERSION\` to \`${VERSION}\`."
+            echo
+            echo "Opened by the \`${BRANCH}\` tracker after \`make test-library\` **and** the full"
+            echo "simulator matrix both passed against this version."
+            echo
+            echo "Left as a PR rather than auto-merged: a bump that compiles and tests clean can"
+            echo "still change signing behaviour."
+          } > "$RUNNER_TEMP/pr-body.md"
+
+          existing="$(gh pr list --repo "$REPO" --head "$BRANCH" --state open \
+            --json number -q '.[0].number // empty')"
+
+          if [ -n "$existing" ]; then
+            gh pr edit "$existing" --repo "$REPO" --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+            echo "Updated PR #${existing}."
+          else
+            gh pr create --repo "$REPO" \
+              --base main --head "$BRANCH" \
+              --title "$title" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
+
   report:
     name: Report tracking status
-    needs: [resolve, sync]
+    needs: [resolve, sync, matrix]
     # proceed == 'true' means sync actually ran (it shares that same gate),
     # so needs.sync.outputs.result is one of success/failure/not-pushed here,
     # never ''. dry_run never files or touches issues.
@@ -282,7 +338,16 @@ jobs:
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
       - name: Comment and close resolved tracking issue
-        if: needs.sync.outputs.result == 'success' && steps.existing.outputs.number != ''
+        # "Everything passed" now spans two jobs: sync must have succeeded
+        # (tests green, branch pushed), and the matrix -- when it ran -- must
+        # have succeeded too. For mode: rc the matrix never runs at all
+        # (needs.matrix.result == 'skipped'), and that must still count as
+        # resolved; only an actual matrix failure or cancellation blocks
+        # closing.
+        if: |
+          needs.sync.outputs.result == 'success' &&
+          (needs.matrix.result == 'success' || needs.matrix.result == 'skipped') &&
+          steps.existing.outputs.number != ''
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -300,7 +365,17 @@ jobs:
           gh issue close "$NUMBER" --repo "$REPO"
 
       - name: Build issue body
-        if: needs.sync.outputs.result == 'failure' || needs.sync.outputs.result == 'not-pushed'
+        # Three distinct failure shapes get reported here: sync's own
+        # test-library failure, a passing sync that didn't get pushed, and
+        # (stable only) a sync that passed and pushed but then failed the
+        # full matrix. The last one must read as its own thing -- it is a
+        # narrower, platform/simulator-specific signal that make
+        # test-library alone did not catch -- and it must not be silent just
+        # because sync itself was green.
+        if: |
+          needs.sync.outputs.result == 'failure' ||
+          needs.sync.outputs.result == 'not-pushed' ||
+          (needs.sync.outputs.result == 'success' && needs.matrix.result == 'failure')
         env:
           MODE: ${{ inputs.mode }}
           BRANCH: ${{ inputs.branch }}
@@ -308,7 +383,7 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
           PREVIOUS_VERSION: ${{ steps.previous.outputs.version }}
           MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
-          RESULT: ${{ needs.sync.outputs.result }}
+          SYNC_RESULT: ${{ needs.sync.outputs.result }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -322,10 +397,15 @@ jobs:
             urgency="Informational. This is the early-warning system working: a breaking release is baking upstream on the rc train, and there is time to react before it is promoted to stable."
           fi
 
-          if [ "$RESULT" = "failure" ]; then
+          if [ "$SYNC_RESULT" = "failure" ]; then
+            result="failure"
             state_note="The tracking branch (\`${BRANCH}\`) holds the failing build/test state and can be checked out directly to debug."
-          else
+          elif [ "$SYNC_RESULT" = "not-pushed" ]; then
+            result="not-pushed"
             state_note="Tests **passed** against ${VERSION}, but the tracking branch was not updated (push failed or was rejected -- check push permissions and branch protection on \`${BRANCH}\`). The branch does **not** reflect what was tested; do not go looking for an upstream break here."
+          else
+            result="matrix-failure"
+            state_note="\`make test-library\` passed and the tracking branch (\`${BRANCH}\`) was pushed and reflects ${VERSION}, but the full simulator matrix failed against it. This narrows the problem to platform- or simulator-specific behaviour -- \`make test-library\` alone did not catch it. No promotion PR was opened; check the matrix job in the run below."
           fi
 
           {
@@ -336,7 +416,7 @@ jobs:
             echo "| Target version | \`${VERSION}\` |"
             echo "| Previous version | \`${PREVIOUS_VERSION}\` |"
             echo "| main SHA | \`${MAIN_SHA}\` |"
-            echo "| Result | \`${RESULT}\` |"
+            echo "| Result | \`${result}\` |"
             echo
             echo "${state_note}"
             echo
@@ -349,7 +429,10 @@ jobs:
           } > "$RUNNER_TEMP/issue-body.md"
 
       - name: Open or update tracking issue
-        if: needs.sync.outputs.result == 'failure' || needs.sync.outputs.result == 'not-pushed'
+        if: |
+          needs.sync.outputs.result == 'failure' ||
+          needs.sync.outputs.result == 'not-pushed' ||
+          (needs.sync.outputs.result == 'success' && needs.matrix.result == 'failure')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
