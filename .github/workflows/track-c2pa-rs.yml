@@ -38,6 +38,16 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: track-c2pa-rs-${{ inputs.branch }}
+  cancel-in-progress: true
+
+env:
+  # Must match a simulator present on the pinned Xcode. The Makefile default
+  # (iPhone 17 Pro) does not exist on Xcode 16.4, and every other workflow
+  # here overrides it the same way.
+  SIMULATOR_DESTINATION: "platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5"
+
 jobs:
   resolve:
     name: Resolve target version
@@ -68,19 +78,20 @@ jobs:
             exit 0
           fi
 
-          # --paginate --slurp yields an array of per-page arrays; add flattens it.
-          gh api "repos/${SOURCE_REPO}/releases" --paginate --slurp \
-            | jq 'add' > releases.json
+          # Plain --paginate already merges REST array pages into one flat
+          # array, so no jq/slurp step is needed.
+          gh api "repos/${SOURCE_REPO}/releases?per_page=100" --paginate \
+            > "$RUNNER_TEMP/releases.json"
 
           stable_arg=""
           if [ "$MODE" = "rc" ]; then
-            stable="$(.github/scripts/resolve-c2pa-version.sh --mode stable < releases.json)"
+            stable="$(.github/scripts/resolve-c2pa-version.sh --mode stable < "$RUNNER_TEMP/releases.json")"
             echo "Current stable release: $stable"
             stable_arg="--stable $stable"
           fi
 
           set +e
-          version="$(.github/scripts/resolve-c2pa-version.sh --mode "$MODE" $stable_arg < releases.json)"
+          version="$(.github/scripts/resolve-c2pa-version.sh --mode "$MODE" $stable_arg < "$RUNNER_TEMP/releases.json")"
           code=$?
           set -e
 
@@ -122,7 +133,7 @@ jobs:
           # redundant force-pushes and duplicate CI runs.
           marker="c2pa-track: ${main_sha} ${VERSION}"
           if git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1 \
-             && git log -1 --format=%B "origin/${BRANCH}" | grep -Fq "$marker"; then
+             && git log -1 --format=%B "origin/${BRANCH}" | grep -Fxq "$marker"; then
             echo "Branch already at (${main_sha}, ${VERSION}); nothing to do."
             echo "proceed=false" >> "$GITHUB_OUTPUT"
           else
@@ -134,8 +145,9 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.proceed == 'true'
     runs-on: macos-15
+    timeout-minutes: 60
     outputs:
-      result: ${{ steps.build.outcome }}
+      result: ${{ steps.outcome.outputs.result }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -153,28 +165,72 @@ jobs:
           MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
         run: |
           set -euo pipefail
+
+          case "$BRANCH" in
+            track/*) ;;
+            *) echo "refusing to operate on '$BRANCH': not a track/* branch" >&2; exit 1 ;;
+          esac
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Hard-reset from main: the branch is main plus exactly one commit.
-          git checkout -B "$BRANCH" origin/main
+          # Hard-reset from the exact main SHA the resolve job recorded, not
+          # whatever origin/main happens to be now -- main may have advanced
+          # since resolve ran, and the marker must record the true tip built.
+          git checkout -B "$BRANCH" "$MAIN_SHA"
 
           # BSD sed -- this job runs on macOS.
           sed -i '' "s/^C2PA_VERSION = .*/C2PA_VERSION = ${VERSION}/" Configurations/Base.xcconfig
           grep '^C2PA_VERSION' Configurations/Base.xcconfig
 
           git add Configurations/Base.xcconfig
-          git commit \
+          # --allow-empty: right after the promotion PR merges, main is
+          # already pinned to the resolved version, so sed is a no-op. That
+          # is the normal steady state, not an error -- the marker commit
+          # must still land so the idempotence guard has something to see.
+          git commit --allow-empty \
             -m "chore: track c2pa-rs ${VERSION}" \
             -m "c2pa-track: ${MAIN_SHA} ${VERSION}"
 
       - name: Run library tests
         id: build
         continue-on-error: true
-        run: make test-library
+        run: make test-library DESTINATION="$SIMULATOR_DESTINATION"
 
-      # Pushed regardless of outcome: the branch reflects upstream reality,
-      # including when it is broken. That is the signal.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: track-c2pa-rs-TestResults-${{ needs.resolve.outputs.version }}-${{ github.run_id }}
+          path: TestResults.xcresult
+          if-no-files-found: warn
+
+      # Pushed regardless of test outcome: the branch reflects upstream
+      # reality, including when it is broken. That is the signal. Inverted
+      # to != true (rather than == false) so a dry_run value GHA can't cast
+      # cleanly to boolean fails toward pushing, not toward a silent no-op.
       - name: Force-push the tracking branch
-        if: ${{ inputs.dry_run == false }}
-        run: git push --force origin "${{ inputs.branch }}"
+        id: push
+        if: ${{ inputs.dry_run != true }}
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          case "$BRANCH" in
+            track/*) ;;
+            *) echo "refusing to operate on '$BRANCH': not a track/* branch" >&2; exit 1 ;;
+          esac
+          git push --force-with-lease origin "$BRANCH"
+
+      - name: Record outcome
+        id: outcome
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.build.outcome }}" != "success" ]; then
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.push.outcome }}" != "success" ]; then
+            echo "result=not-pushed" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          fi
