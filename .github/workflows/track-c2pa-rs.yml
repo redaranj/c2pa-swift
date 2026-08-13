@@ -237,3 +237,188 @@ jobs:
           else
             echo "result=success" >> "$GITHUB_OUTPUT"
           fi
+
+  report:
+    name: Report tracking status
+    needs: [resolve, sync]
+    # proceed == 'true' means sync actually ran (it shares that same gate),
+    # so needs.sync.outputs.result is one of success/failure/not-pushed here,
+    # never ''. dry_run never files or touches issues.
+    if: ${{ always() && needs.resolve.outputs.proceed == 'true' && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to the exact main SHA the resolve job recorded (not whatever
+      # origin/main is by the time this job runs) so the "previous version"
+      # below always matches the main_sha reported alongside it.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.main_sha }}
+
+      - name: Read previous pinned version
+        id: previous
+        run: |
+          set -euo pipefail
+          previous="$(grep '^C2PA_VERSION' Configurations/Base.xcconfig | cut -d'=' -f2 | xargs)"
+          echo "version=$previous" >> "$GITHUB_OUTPUT"
+
+      - name: Determine issue title
+        id: title
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          echo "title=c2pa-rs tracking: ${BRANCH} is failing" >> "$GITHUB_OUTPUT"
+
+      - name: Find existing tracking issue
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ steps.title.outputs.title }}
+        run: |
+          set -euo pipefail
+          number="$(gh issue list --repo "$REPO" --label c2pa-rs-tracking --state open \
+            --search "\"${TITLE}\" in:title" --json number -q '.[0].number // empty')"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Comment and close resolved tracking issue
+        if: needs.sync.outputs.result == 'success' && steps.existing.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.existing.outputs.number }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Resolved: the tracking branch now builds and tests pass against **${VERSION}**, from main @ \`${MAIN_SHA}\`."
+            echo
+            echo "Closing this issue."
+          } > "$RUNNER_TEMP/comment.md"
+          gh issue comment "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
+          gh issue close "$NUMBER" --repo "$REPO"
+
+      - name: Build issue body
+        if: needs.sync.outputs.result == 'failure' || needs.sync.outputs.result == 'not-pushed'
+        env:
+          MODE: ${{ inputs.mode }}
+          BRANCH: ${{ inputs.branch }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          VERSION: ${{ needs.resolve.outputs.version }}
+          PREVIOUS_VERSION: ${{ steps.previous.outputs.version }}
+          MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
+          RESULT: ${{ needs.sync.outputs.result }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          release_url="${GITHUB_SERVER_URL}/${SOURCE_REPO}/releases/tag/c2pa-${VERSION}"
+          run_url="${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}"
+
+          if [ "$MODE" = "stable" ]; then
+            urgency="**Urgent.** ${VERSION} is already published upstream and our \`main\` cannot move to it until this is resolved."
+          else
+            urgency="Informational. This is the early-warning system working: a breaking release is baking upstream on the rc train, and there is time to react before it is promoted to stable."
+          fi
+
+          if [ "$RESULT" = "failure" ]; then
+            state_note="The tracking branch (\`${BRANCH}\`) holds the failing build/test state and can be checked out directly to debug."
+          else
+            state_note="Tests **passed** against ${VERSION}, but the tracking branch was not updated (push failed or was rejected -- check push permissions and branch protection on \`${BRANCH}\`). The branch does **not** reflect what was tested; do not go looking for an upstream break here."
+          fi
+
+          {
+            echo "${urgency}"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Target version | \`${VERSION}\` |"
+            echo "| Previous version | \`${PREVIOUS_VERSION}\` |"
+            echo "| main SHA | \`${MAIN_SHA}\` |"
+            echo "| Result | \`${RESULT}\` |"
+            echo
+            echo "${state_note}"
+            echo
+            echo "Failed run: ${run_url}"
+            echo "Upstream release notes: ${release_url}"
+            echo
+            echo "### Self-healing"
+            echo
+            echo "This branch never carries its own fix. Land an ordinary PR against \`main\`; the tracker hard-resets \`${BRANCH}\` from \`main\` on every sync, so the next run picks up the fix and closes this issue automatically."
+          } > "$RUNNER_TEMP/issue-body.md"
+
+      - name: Open or update tracking issue
+        if: needs.sync.outputs.result == 'failure' || needs.sync.outputs.result == 'not-pushed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ steps.title.outputs.title }}
+          NUMBER: ${{ steps.existing.outputs.number }}
+        run: |
+          set -euo pipefail
+          if [ -n "$NUMBER" ]; then
+            gh issue edit "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/issue-body.md"
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --label c2pa-rs-tracking --body-file "$RUNNER_TEMP/issue-body.md"
+          fi
+
+  report-resolve-failure:
+    name: Report resolution failure
+    needs: resolve
+    # A distinct gate from `report` above: this fires only when the resolve
+    # job itself died (e.g. the asset preflight), in which case proceed was
+    # never set and `report` does not run. The two are mutually exclusive.
+    if: ${{ always() && needs.resolve.result == 'failure' && inputs.dry_run != true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine issue title
+        id: title
+        env:
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          set -euo pipefail
+          echo "title=c2pa-rs tracking: ${BRANCH} could not resolve a version" >> "$GITHUB_OUTPUT"
+
+      - name: Find existing tracking issue
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ steps.title.outputs.title }}
+        run: |
+          set -euo pipefail
+          number="$(gh issue list --repo "$REPO" --label c2pa-rs-tracking --state open \
+            --search "\"${TITLE}\" in:title" --json number -q '.[0].number // empty')"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Build issue body
+        env:
+          BRANCH: ${{ inputs.branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}"
+          {
+            echo "The \`resolve\` job for \`${BRANCH}\` failed before it could determine a target version, so no build was attempted and the \`report\` job never ran."
+            echo
+            echo "**Likely cause:** the asset preflight. Upstream added, renamed, or dropped an Apple target archive on the release, so the release no longer carries every archive this repo expects. Bring the target list in \`.github/scripts/check-c2pa-assets.sh\` back in lockstep with the \`download_and_extract\` calls in the C2PAC framework build phase in \`Library/Library.xcodeproj/project.pbxproj\` -- the two must always change together."
+            echo
+            echo "**Other possibility:** a transient GitHub releases-API error (rate limit, timeout). This clears on its own on the next scheduled run; no action needed if it does not recur."
+            echo
+            echo "Failed run: ${run_url}"
+          } > "$RUNNER_TEMP/issue-body.md"
+
+      - name: Open or update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ steps.title.outputs.title }}
+          NUMBER: ${{ steps.existing.outputs.number }}
+        run: |
+          set -euo pipefail
+          if [ -n "$NUMBER" ]; then
+            gh issue edit "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/issue-body.md"
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --label c2pa-rs-tracking --body-file "$RUNNER_TEMP/issue-body.md"
+          fi
