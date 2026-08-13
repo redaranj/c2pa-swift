@@ -1,0 +1,13 @@
+{
+  "tag_name": "c2pa-v0.90.0",
+  "assets": [
+    { "name": "c2pa-v0.90.0-aarch64-apple-ios.zip" },
+    { "name": "c2pa-v0.90.0-x86_64-apple-ios.zip" },
+    { "name": "c2pa-v0.90.0-aarch64-apple-ios-sim.zip" },
+    { "name": "c2pa-v0.90.0-x86_64-apple-ios-macabi.zip" },
+    { "name": "c2pa-v0.90.0-aarch64-apple-ios-macabi.zip" },
+    { "name": "c2pa-v0.90.0-x86_64-apple-darwin.zip" },
+    { "name": "c2pa-v0.90.0-aarch64-apple-darwin.zip" },
+    { "name": "c2pa-v0.90.0-x86_64-unknown-linux-gnu.zip" }
+  ]
+}
