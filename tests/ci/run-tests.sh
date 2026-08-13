@@ -132,5 +132,37 @@ assert "rc: ignores rc at or below current stable" \
 assert "rc: requires --stable" \
   "" 1 resolve releases.json --mode rc
 
+# --- asset preflight ---
+
+assert "assets: all seven targets present" \
+  "All 7 required target archives present for v0.90.0." 0 \
+  check_assets release-complete.json v0.90.0
+
+# Upstream dropping or renaming a target must fail here with a clear message,
+# not as a curl 404 buried inside an Xcode build phase.
+assert "assets: missing catalyst arm64 exits 4" \
+  "" 4 check_assets release-missing-target.json v0.90.0
+
+assert "assets: requires a version argument" \
+  "" 1 check_assets release-complete.json
+
+# --- asset preflight: input validation ---
+
+# Empty stdin means the fetch step upstream produced nothing -- a failure,
+# not a legitimately quiet result. Must not be conflated with exit 4.
+assert "assets: rejects empty input" \
+  "" 1 check_assets empty.json v0.90.0
+
+# Genuinely malformed input (e.g. a proxy's HTML error page) is not JSON at
+# all. Must not crash jq into an out-of-contract exit status.
+assert "assets: rejects non-JSON input" \
+  "" 1 check_assets not-json.json v0.90.0
+
+# A GitHub API error body (e.g. rate-limit) is a JSON object but has no
+# assets array. Must be rejected outright rather than iterating over a null
+# and crashing, or -- worse -- reporting all seven as legitimately missing.
+assert "assets: rejects object without an assets array" \
+  "" 1 check_assets not-an-array.json v0.90.0
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
