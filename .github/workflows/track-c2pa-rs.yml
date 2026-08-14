@@ -40,7 +40,16 @@ permissions:
 
 concurrency:
   group: track-c2pa-rs-${{ inputs.branch }}
-  cancel-in-progress: true
+  # Deliberately NOT cancel-in-progress. A full cycle is sync (macOS build)
+  # then matrix then promote, and sync force-pushes the branch partway
+  # through. Cancelling mid-cycle leaves the branch pushed and marked as
+  # synced while the promotion PR still names the previous version -- and
+  # because the marker is what the idempotence guard reads, every later run
+  # then skips, so the PR stays wrong until upstream ships a new version.
+  # Observed on the fork: a 30-minute poll against 45-70 minute runs cancelled
+  # two cycles this way. Queuing instead is cheap: a superseded run no-ops in
+  # about 20 seconds via the guard.
+  cancel-in-progress: false
 
 env:
   # Must match a simulator present on the pinned Xcode. The Makefile default
@@ -259,7 +268,14 @@ jobs:
     if: ${{ inputs.mode == 'stable' && needs.sync.outputs.result == 'success' && needs.matrix.result == 'success' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
     steps:
+      # Check out the tracking branch itself, not the default ref, so the PR
+      # can be titled from the pin the branch actually carries rather than
+      # from what this run resolved. Those are normally the same; asserting
+      # it below is what stops a PR ever naming a version the branch does
+      # not contain.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
 
       - name: Open or update the promotion PR
         env:
@@ -269,6 +285,15 @@ jobs:
           VERSION: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
+
+          # The PR title is the thing a human acts on, so it must describe the
+          # branch, not this run's intent. If they disagree the branch raced
+          # with another run -- fail rather than publish a misleading title.
+          on_branch="$(grep '^C2PA_VERSION' Configurations/Base.xcconfig | cut -d'=' -f2 | xargs)"
+          if [ "$on_branch" != "$VERSION" ]; then
+            echo "refusing to open a PR: ${BRANCH} is pinned to ${on_branch}, but this run resolved ${VERSION}" >&2
+            exit 1
+          fi
 
           title="Update core C2PA SDK to ${VERSION}"
 
@@ -296,7 +321,7 @@ jobs:
 
   report:
     name: Report tracking status
-    needs: [resolve, sync, matrix]
+    needs: [resolve, sync, matrix, promote]
     # proceed == 'true' means sync actually ran (it shares that same gate),
     # so needs.sync.outputs.result is one of success/failure/not-pushed here,
     # never ''. dry_run never files or touches issues.
@@ -347,6 +372,7 @@ jobs:
         if: |
           needs.sync.outputs.result == 'success' &&
           (needs.matrix.result == 'success' || needs.matrix.result == 'skipped') &&
+          (needs.promote.result == 'success' || needs.promote.result == 'skipped') &&
           steps.existing.outputs.number != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -372,10 +398,16 @@ jobs:
         # narrower, platform/simulator-specific signal that make
         # test-library alone did not catch -- and it must not be silent just
         # because sync itself was green.
+        # Anything that is not an outright success or a legitimate skip gets
+        # reported. Testing against 'failure' alone would let a *cancelled*
+        # matrix or promote through silently -- and since sync has already
+        # force-pushed the marker by then, the idempotence guard would skip
+        # every later run, leaving the branch ahead of its PR with nothing
+        # filed. That is exactly the failure observed on the fork.
         if: |
-          needs.sync.outputs.result == 'failure' ||
-          needs.sync.outputs.result == 'not-pushed' ||
-          (needs.sync.outputs.result == 'success' && needs.matrix.result == 'failure')
+          needs.sync.outputs.result != 'success' ||
+          !(needs.matrix.result == 'success' || needs.matrix.result == 'skipped') ||
+          !(needs.promote.result == 'success' || needs.promote.result == 'skipped')
         env:
           MODE: ${{ inputs.mode }}
           BRANCH: ${{ inputs.branch }}
@@ -384,6 +416,8 @@ jobs:
           PREVIOUS_VERSION: ${{ steps.previous.outputs.version }}
           MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
           SYNC_RESULT: ${{ needs.sync.outputs.result }}
+          MATRIX_RESULT: ${{ needs.matrix.result }}
+          PROMOTE_RESULT: ${{ needs.promote.result }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -403,9 +437,12 @@ jobs:
           elif [ "$SYNC_RESULT" = "not-pushed" ]; then
             result="not-pushed"
             state_note="Tests **passed** against ${VERSION}, but the tracking branch was not updated (push failed or was rejected -- check push permissions and branch protection on \`${BRANCH}\`). The branch does **not** reflect what was tested; do not go looking for an upstream break here."
-          else
-            result="matrix-failure"
+          elif [ "$MATRIX_RESULT" != "success" ] && [ "$MATRIX_RESULT" != "skipped" ]; then
+            result="matrix-${MATRIX_RESULT}"
             state_note="\`make test-library\` passed and the tracking branch (\`${BRANCH}\`) was pushed and reflects ${VERSION}, but the full simulator matrix failed against it. This narrows the problem to platform- or simulator-specific behaviour -- \`make test-library\` alone did not catch it. No promotion PR was opened; check the matrix job in the run below."
+          else
+            result="promote-${PROMOTE_RESULT}"
+            state_note="Everything passed -- \`make test-library\`, the full simulator matrix, and the push -- but opening or updating the promotion PR failed. The tracking branch (\`${BRANCH}\`) is correct and reflects ${VERSION}; only the PR is missing or stale, so any open PR from this branch may still name an older version and must not be merged on the strength of its title. This is a permissions or \`gh\` problem, not an upstream break."
           fi
 
           {
@@ -429,10 +466,16 @@ jobs:
           } > "$RUNNER_TEMP/issue-body.md"
 
       - name: Open or update tracking issue
+        # Anything that is not an outright success or a legitimate skip gets
+        # reported. Testing against 'failure' alone would let a *cancelled*
+        # matrix or promote through silently -- and since sync has already
+        # force-pushed the marker by then, the idempotence guard would skip
+        # every later run, leaving the branch ahead of its PR with nothing
+        # filed. That is exactly the failure observed on the fork.
         if: |
-          needs.sync.outputs.result == 'failure' ||
-          needs.sync.outputs.result == 'not-pushed' ||
-          (needs.sync.outputs.result == 'success' && needs.matrix.result == 'failure')
+          needs.sync.outputs.result != 'success' ||
+          !(needs.matrix.result == 'success' || needs.matrix.result == 'skipped') ||
+          !(needs.promote.result == 'success' || needs.promote.result == 'skipped')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
