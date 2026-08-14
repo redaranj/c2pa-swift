@@ -60,16 +60,11 @@ PR stays wrong until upstream ships a new version. A superseded run costs
 almost nothing anyway: the guard no-ops it in about 20 seconds.
 
 A cycle with real work takes 45 to 70 minutes, most of it the macOS build and
-the simulator matrix. Polling faster than that just means one run is always
-queued behind another.
-
-### Temporary test cadence
-
-The cron in both callers is currently `*/30 * * * *` (every 30 minutes) for
-fork validation. **Revert both to `0 */6 * * *` before proposing this
-upstream.** Six-hourly is the intended cadence: upstream publishes additive
-releases on roughly a one-day bake and cuts a breaking train every two months,
-so a 30-minute poll buys nothing in production and just burns Actions minutes.
+the simulator matrix. Both callers poll on `0 */6 * * *`, which stays clear of
+that; polling faster than a cycle takes just means one run is always queued
+behind another. Six hours is also all the resolution the upstream cadence
+warrants, since additive releases ship on roughly a one-day bake and the
+breaking train runs every two months.
 
 ## Adding or removing an Apple target
 

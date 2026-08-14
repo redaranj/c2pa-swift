@@ -6,9 +6,7 @@ name: Track c2pa-rs stable
 
 on:
   schedule:
-    # TEMPORARY: every 30 minutes for fork validation. Revert to "0 */6 * * *"
-    # before proposing this upstream -- see docs/ci/c2pa-rs-tracking.md.
-    - cron: "*/30 * * * *"
+    - cron: "0 */6 * * *"
   push:
     branches: [main]
   workflow_dispatch:
