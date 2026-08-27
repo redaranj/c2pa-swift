@@ -67,7 +67,7 @@ jobs:
       proceed: ${{ steps.guard.outputs.proceed }}
       main_sha: ${{ steps.guard.outputs.main_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -158,7 +158,7 @@ jobs:
     outputs:
       result: ${{ steps.outcome.outputs.result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -273,7 +273,7 @@ jobs:
       # from what this run resolved. Those are normally the same; asserting
       # it below is what stops a PR ever naming a version the branch does
       # not contain.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.branch }}
 
@@ -331,7 +331,7 @@ jobs:
       # Pinned to the exact main SHA the resolve job recorded (not whatever
       # origin/main is by the time this job runs) so the "previous version"
       # below always matches the main_sha reported alongside it.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.resolve.outputs.main_sha }}
 
