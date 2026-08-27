@@ -1,7 +1,6 @@
-# Tracks the latest published c2pa-rs release (upstream's `stable` line).
-# Supersedes the former update-c2pa-core-sdk.yml, which bumped main without
-# ever building the result, took the most recently published release rather
-# than the highest version, and had no prerelease filter.
+# Tracks the latest published c2pa-rs release (upstream's `stable` line):
+# resolves the highest published non-prerelease c2pa version, builds and
+# tests main against it, and opens a promotion PR when everything passes.
 name: Track c2pa-rs stable
 
 on:
@@ -12,12 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Pin this exact version instead of resolving one"
+        description: "Pin this exact version instead of resolving one."
         required: false
         default: ""
         type: string
       dry_run:
-        description: "Resolve and build, but do not push or file issues"
+        description: "Resolve and build, but do not push or file issues."
         required: false
         default: false
         type: boolean

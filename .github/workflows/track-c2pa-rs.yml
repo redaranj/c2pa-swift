@@ -10,25 +10,25 @@ on:
   workflow_call:
     inputs:
       mode:
-        description: "stable or rc"
+        description: "Tracking mode: stable or rc."
         required: true
         type: string
       branch:
-        description: "Tracking branch to force-push"
+        description: "Tracking branch to force-push."
         required: true
         type: string
       source_repo:
-        description: "Upstream repository to read releases from"
+        description: "Upstream repository to read releases from."
         required: false
         default: contentauth/c2pa-rs
         type: string
       version:
-        description: "Pin this exact version instead of resolving one"
+        description: "Pin this exact version instead of resolving one."
         required: false
         default: ""
         type: string
       dry_run:
-        description: "Resolve and build, but do not push or file issues"
+        description: "Resolve and build, but do not push or file issues."
         required: false
         default: false
         type: boolean
@@ -40,15 +40,12 @@ permissions:
 
 concurrency:
   group: track-c2pa-rs-${{ inputs.branch }}
-  # Deliberately NOT cancel-in-progress. A full cycle is sync (macOS build)
-  # then matrix then promote, and sync force-pushes the branch partway
-  # through. Cancelling mid-cycle leaves the branch pushed and marked as
-  # synced while the promotion PR still names the previous version -- and
-  # because the marker is what the idempotence guard reads, every later run
-  # then skips, so the PR stays wrong until upstream ships a new version.
-  # Observed on the fork: a 30-minute poll against 45-70 minute runs cancelled
-  # two cycles this way. Queuing instead is cheap: a superseded run no-ops in
-  # about 20 seconds via the guard.
+  # Deliberately NOT cancel-in-progress. Sync force-pushes the branch and
+  # writes the idempotence marker before the promotion PR is updated, so a
+  # cancellation between those points leaves the branch ahead of a PR that
+  # still names the previous version -- and the marker then makes every later
+  # run skip, so nothing corrects it. Queuing is cheap: a superseded run
+  # no-ops in about 20 seconds via the guard.
   cancel-in-progress: false
 
 env:
@@ -59,7 +56,7 @@ env:
 
 jobs:
   resolve:
-    name: Resolve target version
+    name: Resolve Target Version
     # Reading the releases API needs no macOS runner.
     runs-on: ubuntu-latest
     outputs:
@@ -71,7 +68,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve target version
+      - name: Resolve Target Version
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
@@ -114,7 +111,7 @@ jobs:
           echo "Resolved target version: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Preflight release assets
+      - name: Preflight Release Assets
         if: steps.resolve.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
@@ -125,7 +122,7 @@ jobs:
           gh api "repos/${SOURCE_REPO}/releases/tags/c2pa-${VERSION}" \
             | .github/scripts/check-c2pa-assets.sh "$VERSION"
 
-      - name: Idempotence guard
+      - name: Idempotence Guard
         id: guard
         if: steps.resolve.outputs.version != ''
         env:
@@ -167,7 +164,7 @@ jobs:
         with:
           xcode-version: "16.4"
 
-      - name: Build the tracking branch
+      - name: Build the Tracking Branch
         env:
           BRANCH: ${{ inputs.branch }}
           VERSION: ${{ needs.resolve.outputs.version }}
@@ -201,19 +198,18 @@ jobs:
             -m "chore: track c2pa-rs ${VERSION}" \
             -m "c2pa-track: ${MAIN_SHA} ${VERSION}"
 
-      - name: Run library tests
+      - name: Run Library Tests
         id: build
         continue-on-error: true
         run: make test-library DESTINATION="$SIMULATOR_DESTINATION"
 
-      - name: Upload test results
-        # Only on red. Unlike test.yml, where a human is reading one specific
-        # PR run, this workflow runs unattended several times a day per branch
-        # and the bundle is only of interest when something actually broke.
+      - name: Upload Test Results
+        # Only on red: this workflow runs unattended several times a day per
+        # branch, so the bundle is only of interest when something broke.
         if: steps.build.outcome != 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: track-c2pa-rs-TestResults-${{ needs.resolve.outputs.version }}-${{ github.run_id }}
+          name: TestResults-${{ needs.resolve.outputs.version }}-${{ github.run_id }}
           path: TestResults.xcresult
           if-no-files-found: warn
 
@@ -221,7 +217,7 @@ jobs:
       # reality, including when it is broken. That is the signal. Inverted
       # to != true (rather than == false) so a dry_run value GHA can't cast
       # cleanly to boolean fails toward pushing, not toward a silent no-op.
-      - name: Force-push the tracking branch
+      - name: Force-Push the Tracking Branch
         id: push
         if: ${{ inputs.dry_run != true }}
         env:
@@ -234,7 +230,7 @@ jobs:
           esac
           git push --force-with-lease origin "$BRANCH"
 
-      - name: Record outcome
+      - name: Record Outcome
         id: outcome
         if: always()
         run: |
@@ -255,7 +251,7 @@ jobs:
   # GITHUB_TOKEN do not trigger other workflows, and track/** is excluded from
   # test.yml's push trigger anyway.
   matrix:
-    name: Full matrix
+    name: Full Matrix
     needs: [resolve, sync]
     if: ${{ inputs.mode == 'stable' && needs.sync.outputs.result == 'success' && inputs.dry_run != true }}
     uses: ./.github/workflows/test.yml
@@ -263,7 +259,7 @@ jobs:
       ref: ${{ inputs.branch }}
 
   promote:
-    name: Open promotion PR
+    name: Open Promotion PR
     needs: [resolve, sync, matrix]
     if: ${{ inputs.mode == 'stable' && needs.sync.outputs.result == 'success' && needs.matrix.result == 'success' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
@@ -277,7 +273,7 @@ jobs:
         with:
           ref: ${{ inputs.branch }}
 
-      - name: Open or update the promotion PR
+      - name: Open or Update the Promotion PR
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -320,13 +316,15 @@ jobs:
           fi
 
   report:
-    name: Report tracking status
+    name: Report Tracking Status
     needs: [resolve, sync, matrix, promote]
     # proceed == 'true' means sync actually ran (it shares that same gate),
     # so needs.sync.outputs.result is one of success/failure/not-pushed here,
     # never ''. dry_run never files or touches issues.
     if: ${{ always() && needs.resolve.outputs.proceed == 'true' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
+    env:
+      ISSUE_TITLE: "C2PA tracking branch ${{ inputs.branch }} is failing"
     steps:
       # Pinned to the exact main SHA the resolve job recorded (not whatever
       # origin/main is by the time this job runs) so the "previous version"
@@ -335,49 +333,26 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.main_sha }}
 
-      - name: Read previous pinned version
+      - name: Read Previous Pinned Version
         id: previous
         run: |
           set -euo pipefail
           previous="$(grep '^C2PA_VERSION' Configurations/Base.xcconfig | cut -d'=' -f2 | xargs)"
           echo "version=$previous" >> "$GITHUB_OUTPUT"
 
-      - name: Determine issue title
-        id: title
-        env:
-          BRANCH: ${{ inputs.branch }}
-        run: |
-          set -euo pipefail
-          echo "title=c2pa-rs tracking: ${BRANCH} is failing" >> "$GITHUB_OUTPUT"
-
-      - name: Find existing tracking issue
-        id: existing
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TITLE: ${{ steps.title.outputs.title }}
-        run: |
-          set -euo pipefail
-          number="$(gh issue list --repo "$REPO" --label c2pa-rs-tracking --state open \
-            --search "\"${TITLE}\" in:title" --json number -q '.[0].number // empty')"
-          echo "number=$number" >> "$GITHUB_OUTPUT"
-
-      - name: Comment and close resolved tracking issue
-        # "Everything passed" now spans two jobs: sync must have succeeded
-        # (tests green, branch pushed), and the matrix -- when it ran -- must
-        # have succeeded too. For mode: rc the matrix never runs at all
-        # (needs.matrix.result == 'skipped'), and that must still count as
-        # resolved; only an actual matrix failure or cancellation blocks
-        # closing.
+      - name: Close Resolved Tracking Issue
+        # "Everything passed" spans several jobs: sync succeeded (tests green,
+        # branch pushed), and the matrix and promote -- when they ran -- did
+        # too. For mode: rc the matrix never runs at all
+        # (needs.matrix.result == 'skipped'), and that still counts as
+        # resolved; only an actual failure or cancellation blocks closing.
         if: |
           needs.sync.outputs.result == 'success' &&
           (needs.matrix.result == 'success' || needs.matrix.result == 'skipped') &&
-          (needs.promote.result == 'success' || needs.promote.result == 'skipped') &&
-          steps.existing.outputs.number != ''
+          (needs.promote.result == 'success' || needs.promote.result == 'skipped')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          NUMBER: ${{ steps.existing.outputs.number }}
           VERSION: ${{ needs.resolve.outputs.version }}
           MAIN_SHA: ${{ needs.resolve.outputs.main_sha }}
         run: |
@@ -387,28 +362,27 @@ jobs:
             echo
             echo "Closing this issue."
           } > "$RUNNER_TEMP/comment.md"
-          gh issue comment "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/comment.md"
-          gh issue close "$NUMBER" --repo "$REPO"
+          .github/scripts/tracking-issue.sh close "$ISSUE_TITLE" "$RUNNER_TEMP/comment.md"
 
-      - name: Build issue body
-        # Three distinct failure shapes get reported here: sync's own
-        # test-library failure, a passing sync that didn't get pushed, and
-        # (stable only) a sync that passed and pushed but then failed the
-        # full matrix. The last one must read as its own thing -- it is a
-        # narrower, platform/simulator-specific signal that make
-        # test-library alone did not catch -- and it must not be silent just
-        # because sync itself was green.
+      - name: Open or Update Tracking Issue
         # Anything that is not an outright success or a legitimate skip gets
-        # reported. Testing against 'failure' alone would let a *cancelled*
-        # matrix or promote through silently -- and since sync has already
-        # force-pushed the marker by then, the idempotence guard would skip
-        # every later run, leaving the branch ahead of its PR with nothing
-        # filed. That is exactly the failure observed on the fork.
+        # reported. Gating on 'failure' alone would let a cancelled matrix or
+        # promote pass silently -- and because sync has already force-pushed
+        # the marker by then, the idempotence guard would skip every later
+        # run, leaving the branch ahead of its PR with nothing filed.
+        #
+        # Three failure shapes land here: sync's own test-library failure, a
+        # passing sync that did not get pushed, and (stable only) a green
+        # sync whose full matrix then failed -- a narrower, platform- or
+        # simulator-specific signal that make test-library alone missed, and
+        # one that must not be silent just because sync itself was green.
         if: |
           needs.sync.outputs.result != 'success' ||
           !(needs.matrix.result == 'success' || needs.matrix.result == 'skipped') ||
           !(needs.promote.result == 'success' || needs.promote.result == 'skipped')
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           MODE: ${{ inputs.mode }}
           BRANCH: ${{ inputs.branch }}
           SOURCE_REPO: ${{ inputs.source_repo }}
@@ -418,7 +392,6 @@ jobs:
           SYNC_RESULT: ${{ needs.sync.outputs.result }}
           MATRIX_RESULT: ${{ needs.matrix.result }}
           PROMOTE_RESULT: ${{ needs.promote.result }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
@@ -465,63 +438,26 @@ jobs:
             echo "This branch never carries its own fix. Land an ordinary PR against \`main\`; the tracker hard-resets \`${BRANCH}\` from \`main\` on every sync, so the next run picks up the fix and closes this issue automatically."
           } > "$RUNNER_TEMP/issue-body.md"
 
-      - name: Open or update tracking issue
-        # Anything that is not an outright success or a legitimate skip gets
-        # reported. Testing against 'failure' alone would let a *cancelled*
-        # matrix or promote through silently -- and since sync has already
-        # force-pushed the marker by then, the idempotence guard would skip
-        # every later run, leaving the branch ahead of its PR with nothing
-        # filed. That is exactly the failure observed on the fork.
-        if: |
-          needs.sync.outputs.result != 'success' ||
-          !(needs.matrix.result == 'success' || needs.matrix.result == 'skipped') ||
-          !(needs.promote.result == 'success' || needs.promote.result == 'skipped')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TITLE: ${{ steps.title.outputs.title }}
-          NUMBER: ${{ steps.existing.outputs.number }}
-        run: |
-          set -euo pipefail
-          if [ -n "$NUMBER" ]; then
-            gh issue edit "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/issue-body.md"
-          else
-            gh issue create --repo "$REPO" --title "$TITLE" --label c2pa-rs-tracking --body-file "$RUNNER_TEMP/issue-body.md"
-          fi
+          .github/scripts/tracking-issue.sh file "$ISSUE_TITLE" "$RUNNER_TEMP/issue-body.md"
 
   report-resolve-failure:
-    name: Report resolution failure
+    name: Report Resolution Failure
     needs: resolve
     # A distinct gate from `report` above: this fires only when the resolve
     # job itself died (e.g. the asset preflight), in which case proceed was
     # never set and `report` does not run. The two are mutually exclusive.
     if: ${{ always() && needs.resolve.result == 'failure' && inputs.dry_run != true }}
     runs-on: ubuntu-latest
+    env:
+      ISSUE_TITLE: "C2PA tracking branch ${{ inputs.branch }} could not resolve a version"
     steps:
-      - name: Determine issue title
-        id: title
-        env:
-          BRANCH: ${{ inputs.branch }}
-        run: |
-          set -euo pipefail
-          echo "title=c2pa-rs tracking: ${BRANCH} could not resolve a version" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
 
-      - name: Find existing tracking issue
-        id: existing
+      - name: Open or Update Tracking Issue
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TITLE: ${{ steps.title.outputs.title }}
-        run: |
-          set -euo pipefail
-          number="$(gh issue list --repo "$REPO" --label c2pa-rs-tracking --state open \
-            --search "\"${TITLE}\" in:title" --json number -q '.[0].number // empty')"
-          echo "number=$number" >> "$GITHUB_OUTPUT"
-
-      - name: Build issue body
-        env:
           BRANCH: ${{ inputs.branch }}
-          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}"
@@ -535,16 +471,4 @@ jobs:
             echo "Failed run: ${run_url}"
           } > "$RUNNER_TEMP/issue-body.md"
 
-      - name: Open or update tracking issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          TITLE: ${{ steps.title.outputs.title }}
-          NUMBER: ${{ steps.existing.outputs.number }}
-        run: |
-          set -euo pipefail
-          if [ -n "$NUMBER" ]; then
-            gh issue edit "$NUMBER" --repo "$REPO" --body-file "$RUNNER_TEMP/issue-body.md"
-          else
-            gh issue create --repo "$REPO" --title "$TITLE" --label c2pa-rs-tracking --body-file "$RUNNER_TEMP/issue-body.md"
-          fi
+          .github/scripts/tracking-issue.sh file "$ISSUE_TITLE" "$RUNNER_TEMP/issue-body.md"

@@ -74,10 +74,12 @@ C2PAC framework build phase in `Library/Library.xcodeproj/project.pbxproj`.
 
 ## Local test suite
 
-The helper scripts under `.github/scripts/` are unit-tested offline against
-JSON fixtures, with no network and no Xcode required. Run them with
-`make test-ci-scripts` (also run as part of `make test`). Tests live in
-`tests/ci/run-tests.sh`, fixtures in `tests/ci/fixtures/`.
+The helper scripts under `.github/scripts/` are unit-tested offline -- the
+resolve and preflight scripts against JSON fixtures, the issue reporter
+against a stubbed `gh` -- with no network and no Xcode required. Run them
+with `make test-ci-scripts` (also run as part of `make test`). Tests live in
+`tests/ci/run-tests.sh`, fixtures in `tests/ci/fixtures/`, stubs in
+`tests/ci/stubs/`.
 
 Fixture design rule: a trap planted in a fixture must be able to win if the
 guard against it regresses. A decoy whose version sits below the correct

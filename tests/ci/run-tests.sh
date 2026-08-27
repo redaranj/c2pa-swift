@@ -164,5 +164,55 @@ assert "assets: rejects non-JSON input" \
 assert "assets: rejects object without an assets array" \
   "" 1 check_assets not-an-array.json v0.90.0
 
+# --- tracking issue upsert ---
+
+TRACKING="$ROOT/.github/scripts/tracking-issue.sh"
+STUBS="$ROOT/tests/ci/stubs"
+GH_LOG="$(mktemp)"
+BODY_FILE="$(mktemp)"
+TITLE="C2PA tracking branch track/c2pa-rs-stable is failing"
+
+# Runs tracking-issue.sh against the stubbed gh, which records every
+# invocation in GH_LOG and answers `issue list` with the first argument.
+tracking() {
+  local open_number="$1"
+  shift
+  : > "$GH_LOG"
+  GH_STUB_LOG="$GH_LOG" GH_STUB_ISSUE_NUMBER="$open_number" \
+    PATH="$STUBS:$PATH" REPO="owner/repo" GH_TOKEN="stub" "$TRACKING" "$@"
+}
+
+list_line="issue list --repo owner/repo --label c2pa-rs-tracking --state open --search \"${TITLE}\" in:title --json number -q .[0].number // empty"
+
+assert "tracking: file with no open issue creates one" \
+  "" 0 tracking "" file "$TITLE" "$BODY_FILE"
+assert "tracking: create goes through gh issue create" \
+  "${list_line}
+issue create --repo owner/repo --title ${TITLE} --label c2pa-rs-tracking --body-file ${BODY_FILE}" \
+  0 cat "$GH_LOG"
+
+assert "tracking: file with an open issue updates it" \
+  "" 0 tracking 42 file "$TITLE" "$BODY_FILE"
+assert "tracking: update edits the body in place" \
+  "${list_line}
+issue edit 42 --repo owner/repo --body-file ${BODY_FILE}" \
+  0 cat "$GH_LOG"
+
+assert "tracking: close with an open issue comments then closes" \
+  "" 0 tracking 42 close "$TITLE" "$BODY_FILE"
+assert "tracking: close comments before closing" \
+  "${list_line}
+issue comment 42 --repo owner/repo --body-file ${BODY_FILE}
+issue close 42 --repo owner/repo" \
+  0 cat "$GH_LOG"
+
+assert "tracking: close with nothing open is a no-op" \
+  "No open tracking issue to close." 0 tracking "" close "$TITLE" "$BODY_FILE"
+
+assert "usage: tracking rejects an unknown command" \
+  "" 2 tracking "" frobnicate "$TITLE" "$BODY_FILE"
+
+rm -f "$GH_LOG" "$BODY_FILE"
+
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

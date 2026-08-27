@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# gh stand-in for the tracking-issue.sh tests: records each invocation in
+# GH_STUB_LOG and answers `issue list` with GH_STUB_ISSUE_NUMBER, so the
+# suite stays offline. Every other subcommand succeeds silently.
+echo "$*" >> "${GH_STUB_LOG}"
+if [ "${1:-}" = "issue" ] && [ "${2:-}" = "list" ]; then
+  printf '%s\n' "${GH_STUB_ISSUE_NUMBER}"
+fi
