@@ -32,37 +32,37 @@ public final class TestRunner: Sendable {
     public func runTestSuite(_ suite: TestSuite) async -> [TestResult] {
         switch suite {
         case .stream:
-            return await StreamTests().runAllTests()
+            await StreamTests().runAllTests()
         case .builder:
-            return await BuilderTests().runAllTests()
+            await BuilderTests().runAllTests()
         case .reader:
-            return await ReaderTests().runAllTests()
+            await ReaderTests().runAllTests()
         case .signing:
-            return await SigningTests().runAllTests()
+            await SigningTests().runAllTests()
         case .signerExtended:
-            return await SignerExtendedTests().runAllTests()
+            await SignerExtendedTests().runAllTests()
         case .certificateManager:
-            return await CertificateManagerTests().runAllTests()
+            await CertificateManagerTests().runAllTests()
         case .hardwareSigning:
-            return await HardwareSigningTests().runAllTests()
+            await HardwareSigningTests().runAllTests()
         case .secureEnclave:
-            return await SecureEnclaveSignerTests().runAllTests()
+            await SecureEnclaveSignerTests().runAllTests()
         case .keychainSigner:
-            return await KeychainSignerTests().runAllTests()
+            await KeychainSignerTests().runAllTests()
         case .webServiceSigner:
-            return await WebServiceSignerTests().runAllTests()
+            await WebServiceSignerTests().runAllTests()
         case .comprehensive:
-            return await ComprehensiveTests().runAllTests()
+            await ComprehensiveTests().runAllTests()
         case .manifest:
-            return await ManifestTests().runAllTests()
+            await ManifestTests().runAllTests()
         case .assertionDefinition:
-            return await AssertionDefinitionTests().runAllTests()
+            await AssertionDefinitionTests().runAllTests()
         case .settingsDefinition:
-            return await SettingsDefinitionTests().runAllTests()
+            await SettingsDefinitionTests().runAllTests()
         case .context:
-            return await ContextTests().runAllTests()
+            await ContextTests().runAllTests()
         case .convenience:
-            return await ConvenienceTests().runAllTests()
+            await ConvenienceTests().runAllTests()
         }
     }
 }
