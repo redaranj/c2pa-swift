@@ -48,7 +48,7 @@ public final class ReaderTests: TestImplementation {
             do {
                 try reader.resource(uri: resourceURI, to: resourceStream)
                 return .success("Reader Resource Error", "[WARN] Resource found (unexpected)")
-            } catch _ as C2PAError {
+            } catch {
                 return .success("Reader Resource Error", "[PASS] Error handled correctly")
             }
 
@@ -92,12 +92,9 @@ public final class ReaderTests: TestImplementation {
             // If this succeeds with mismatched data, something is wrong
             return .failure("Reader With Manifest", "Expected error for mismatched manifest but operation succeeded")
 
-        } catch let error as C2PAError {
+        } catch {
             // C2PAError is expected for mismatched/invalid manifest data
             return .success("Reader With Manifest", "[PASS] Mismatched manifest correctly rejected with C2PAError: \(error)")
-        } catch {
-            // Any other error type is also acceptable - the API correctly rejects invalid input
-            return .success("Reader With Manifest", "[PASS] Mismatched manifest rejected with error: \(error)")
         }
     }
 
@@ -413,12 +410,10 @@ public final class ReaderTests: TestImplementation {
                 return .success("Reader Remote URL", "[PASS] No remote URL (embedded manifest)")
             }
 
-        } catch let error as C2PAError {
+        } catch {
             if case .api(let message) = error, message.contains("No manifest") {
                 return .success("Reader Remote URL", "[WARN] No manifest (acceptable)")
             }
-            return .failure("Reader Remote URL", "Failed: \(error)")
-        } catch {
             return .failure("Reader Remote URL", "Failed: \(error)")
         }
     }
@@ -444,12 +439,10 @@ public final class ReaderTests: TestImplementation {
                 return .success("Reader Is Embedded", "[PASS] Embedded: \(isEmbedded)")
             }
 
-        } catch let error as C2PAError {
+        } catch {
             if case .api(let message) = error, message.contains("No manifest") {
                 return .success("Reader Is Embedded", "[WARN] No manifest (acceptable)")
             }
-            return .failure("Reader Is Embedded", "Failed: \(error)")
-        } catch {
             return .failure("Reader Is Embedded", "Failed: \(error)")
         }
     }
@@ -516,7 +509,7 @@ public final class ReaderTests: TestImplementation {
 
             return .success("Reader Detailed JSON Comparison", "[WARN] Empty JSON (normal)")
 
-        } catch let error as C2PAError {
+        } catch {
             if case .api(let message) = error {
                 if message.contains("No manifest") || message.contains("no JUMBF data found")
                     || message.contains("ManifestNotFound")
@@ -525,8 +518,6 @@ public final class ReaderTests: TestImplementation {
                 }
             }
             return .failure("Reader Detailed JSON Comparison", "Unexpected C2PAError: \(error)")
-        } catch {
-            return .failure("Reader Detailed JSON Comparison", "Unexpected error: \(error)")
         }
     }
 
@@ -558,10 +549,8 @@ public final class ReaderTests: TestImplementation {
                 return .failure("Reader From Context", "json was empty")
             }
             return .success("Reader From Context", "[PASS] read \(json.count) chars via context-configured Reader")
-        } catch let error as C2PAError {
-            return .success("Reader From Context", "[WARN] context Reader callable (error: \(error))")
         } catch {
-            return .failure("Reader From Context", "Error: \(error)")
+            return .success("Reader From Context", "[WARN] context Reader callable (error: \(error))")
         }
     }
 
@@ -577,10 +566,8 @@ public final class ReaderTests: TestImplementation {
                 return .failure("Reader crJSON", "crJSON was empty")
             }
             return .success("Reader crJSON", "[PASS] crJSON returned \(crjson.count) chars")
-        } catch let error as C2PAError {
-            return .success("Reader crJSON", "[WARN] crJSON callable (error: \(error))")
         } catch {
-            return .failure("Reader crJSON", "Error: \(error)")
+            return .success("Reader crJSON", "[WARN] crJSON callable (error: \(error))")
         }
     }
 

@@ -225,7 +225,7 @@ public final class StreamTests: TestImplementation {
                     return .failure("Stream with Reader", "Got empty JSON from image without manifest")
                 }
                 return .success("Stream with Reader", "[PASS] Stream works with Reader API (JSON length: \(json.count))")
-            } catch let jsonError as C2PAError {
+            } catch let jsonError {
                 // Expected: no manifest in test image
                 if case .api(let message) = jsonError,
                    message.contains("no JUMBF data found") || message.contains("ManifestNotFound")
@@ -234,7 +234,7 @@ public final class StreamTests: TestImplementation {
                 }
                 return .failure("Stream with Reader", "Unexpected C2PAError reading JSON: \(jsonError)")
             }
-        } catch let error as C2PAError {
+        } catch {
             // Reader creation may fail for images without C2PA data
             if case .api(let message) = error,
                message.contains("no JUMBF data found") || message.contains("ManifestNotFound")
@@ -242,8 +242,6 @@ public final class StreamTests: TestImplementation {
                 return .success("Stream with Reader", "[PASS] Reader correctly detects no manifest")
             }
             return .failure("Stream with Reader", "C2PAError: \(error)")
-        } catch {
-            return .failure("Stream with Reader", "Failed: \(error)")
         }
     }
 

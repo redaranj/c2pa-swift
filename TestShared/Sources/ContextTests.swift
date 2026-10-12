@@ -460,7 +460,7 @@ public final class ContextTests: TestImplementation {
             do {
                 _ = try Reader(context: context, format: "image/jpeg", stream: try Stream(data: asset))
                 return .failure(name, "read succeeded although the resolver threw")
-            } catch let error as C2PAError {
+            } catch {
                 guard requests.recorded.count == 1 else {
                     return .failure(name, "resolver was called \(requests.recorded.count) times, expected 1")
                 }
@@ -488,7 +488,7 @@ public final class ContextTests: TestImplementation {
             do {
                 _ = try Reader(context: context, format: "image/jpeg", stream: try Stream(data: asset))
                 return .failure(name, "read succeeded although the status was out of range")
-            } catch let error as C2PAError {
+            } catch {
                 let text = error.localizedDescription
                 guard text.contains("out of range") else {
                     return .failure(name, "unexpected error for an out-of-range status: \(text)")
@@ -509,13 +509,11 @@ public final class ContextTests: TestImplementation {
         do {
             _ = try C2PAContext(urlSession: session)
             return .failure(name, "context was created with a main-queue session")
-        } catch let error as C2PAError {
+        } catch {
             guard error.localizedDescription.contains("main queue") else {
                 return .failure(name, "unexpected error: \(error.localizedDescription)")
             }
             return .success(name, "[PASS] main-queue session refused")
-        } catch {
-            return .failure(name, "Error: \(error)")
         }
     }
 
@@ -579,7 +577,7 @@ public final class ContextTests: TestImplementation {
                 _ = try Reader(
                     context: context, format: "image/jpeg", stream: try Stream(data: asset))
                 return .failure(name, "read succeeded although the resolver served no manifest")
-            } catch is C2PAError {
+            } catch {
                 return .success(name, "[PASS] empty response body surfaced as an error")
             }
         } catch {
