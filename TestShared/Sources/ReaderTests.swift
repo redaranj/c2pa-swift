@@ -584,23 +584,23 @@ public final class ReaderTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        return [
-            testReaderResourceErrorHandling(),
-            testReaderWithManifestData(),
-            testResourceReading(),
-            testReaderValidation(),
-            testReaderThumbnailExtraction(),
-            testReaderIngredientExtraction(),
-            testReaderJSONParsing(),
-            testReaderWithMultipleStreams(),
-            testReaderRemoteURL(),
-            testReaderIsEmbedded(),
-            testReaderDetailedJSON(),
-            testReaderDetailedJSONComparison(),
-            testReaderSupportedMimeTypes(),
-            testReaderFromContext(),
-            testReaderCrJSON()
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testReaderResourceErrorHandling", testReaderResourceErrorHandling),
+            NamedTest("testReaderWithManifestData", testReaderWithManifestData),
+            NamedTest("testResourceReading", testResourceReading),
+            NamedTest("testReaderValidation", testReaderValidation),
+            NamedTest("testReaderThumbnailExtraction", testReaderThumbnailExtraction),
+            NamedTest("testReaderIngredientExtraction", testReaderIngredientExtraction),
+            NamedTest("testReaderJSONParsing", testReaderJSONParsing),
+            NamedTest("testReaderWithMultipleStreams", testReaderWithMultipleStreams),
+            NamedTest("testReaderRemoteURL", testReaderRemoteURL),
+            NamedTest("testReaderIsEmbedded", testReaderIsEmbedded),
+            NamedTest("testReaderDetailedJSON", testReaderDetailedJSON),
+            NamedTest("testReaderDetailedJSONComparison", testReaderDetailedJSONComparison),
+            NamedTest("testReaderSupportedMimeTypes", testReaderSupportedMimeTypes),
+            NamedTest("testReaderFromContext", testReaderFromContext),
+            NamedTest("testReaderCrJSON", testReaderCrJSON)
         ]
     }
 }

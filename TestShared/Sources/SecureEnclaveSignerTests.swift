@@ -318,17 +318,15 @@ public final class SecureEnclaveSignerTests: TestImplementation {
         #endif
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testSecureEnclaveSignerConfigCreation())
-        results.append(testNonES256RejectedBySecureEnclave())
-        results.append(testDeleteNonExistentKey())
-        results.append(testDeleteKeyIdempotent())
-        results.append(testSecureEnclaveAvailabilityCheck())
-        results.append(testCreateKeyAccessControlValidation())
-        results.append(testES256AcceptedBySecureEnclave())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testSecureEnclaveSignerConfigCreation", testSecureEnclaveSignerConfigCreation),
+            NamedTest("testNonES256RejectedBySecureEnclave", testNonES256RejectedBySecureEnclave),
+            NamedTest("testDeleteNonExistentKey", testDeleteNonExistentKey),
+            NamedTest("testDeleteKeyIdempotent", testDeleteKeyIdempotent),
+            NamedTest("testSecureEnclaveAvailabilityCheck", testSecureEnclaveAvailabilityCheck),
+            NamedTest("testCreateKeyAccessControlValidation", testCreateKeyAccessControlValidation),
+            NamedTest("testES256AcceptedBySecureEnclave", testES256AcceptedBySecureEnclave)
+        ]
     }
 }

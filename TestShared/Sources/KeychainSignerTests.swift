@@ -479,19 +479,17 @@ public final class KeychainSignerTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testEd25519RejectedByKeychainSigner())
-        results.append(testNonExistentKeyFailure())
-        results.append(testES256WithKeychainKey())
-        results.append(testES384AlgorithmMismatchDetection())
-        results.append(testES512AlgorithmMismatchDetection())
-        results.append(testPS256AlgorithmMismatchDetection())
-        results.append(testPS384AlgorithmMismatchDetection())
-        results.append(testPS512AlgorithmMismatchDetection())
-        results.append(testKeychainSigningWorkflow())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testEd25519RejectedByKeychainSigner", testEd25519RejectedByKeychainSigner),
+            NamedTest("testNonExistentKeyFailure", testNonExistentKeyFailure),
+            NamedTest("testES256WithKeychainKey", testES256WithKeychainKey),
+            NamedTest("testES384AlgorithmMismatchDetection", testES384AlgorithmMismatchDetection),
+            NamedTest("testES512AlgorithmMismatchDetection", testES512AlgorithmMismatchDetection),
+            NamedTest("testPS256AlgorithmMismatchDetection", testPS256AlgorithmMismatchDetection),
+            NamedTest("testPS384AlgorithmMismatchDetection", testPS384AlgorithmMismatchDetection),
+            NamedTest("testPS512AlgorithmMismatchDetection", testPS512AlgorithmMismatchDetection),
+            NamedTest("testKeychainSigningWorkflow", testKeychainSigningWorkflow)
+        ]
     }
 }

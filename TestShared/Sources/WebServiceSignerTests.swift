@@ -313,16 +313,14 @@ public final class WebServiceSignerTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testWebServiceSignerCreation())
-        results.append(await testCreateSignerInvalidURL())
-        results.append(await testCreateSignerConnectionFailure())
-        results.append(await testAsyncSignerCreation())
-        results.append(testAsyncSignerWithTSA())
-        results.append(await testWebServiceSignerWithLocalServer())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testWebServiceSignerCreation", testWebServiceSignerCreation),
+            NamedTest("testCreateSignerInvalidURL", testCreateSignerInvalidURL),
+            NamedTest("testCreateSignerConnectionFailure", testCreateSignerConnectionFailure),
+            NamedTest("testAsyncSignerCreation", testAsyncSignerCreation),
+            NamedTest("testAsyncSignerWithTSA", testAsyncSignerWithTSA),
+            NamedTest("testWebServiceSignerWithLocalServer", testWebServiceSignerWithLocalServer)
+        ]
     }
 }

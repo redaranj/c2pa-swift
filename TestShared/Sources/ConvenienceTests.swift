@@ -273,16 +273,14 @@ public final class ConvenienceTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testReadFileWithManifest())
-        results.append(testReadFileWithoutManifest())
-        results.append(testReadFileNonExistent())
-        results.append(testReadFileUnknownExtension())
-        results.append(testSignFile())
-        results.append(testSignFileWithInvalidManifest())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testReadFileWithManifest", testReadFileWithManifest),
+            NamedTest("testReadFileWithoutManifest", testReadFileWithoutManifest),
+            NamedTest("testReadFileNonExistent", testReadFileNonExistent),
+            NamedTest("testReadFileUnknownExtension", testReadFileUnknownExtension),
+            NamedTest("testSignFile", testSignFile),
+            NamedTest("testSignFileWithInvalidManifest", testSignFileWithInvalidManifest)
+        ]
     }
 }

@@ -296,17 +296,17 @@ public final class StreamTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        return [
-            testStreamOperations(),
-            testStreamFileOperations(),
-            testWriteOnlyStreams(),
-            testCustomStreamCallbacks(),
-            testStreamWithLargeData(),
-            testMultipleStreams(),
-            testFileStreamOptions(),
-            testStreamWithReader(),
-            testStreamWithBuilder()
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testStreamOperations", testStreamOperations),
+            NamedTest("testStreamFileOperations", testStreamFileOperations),
+            NamedTest("testWriteOnlyStreams", testWriteOnlyStreams),
+            NamedTest("testCustomStreamCallbacks", testCustomStreamCallbacks),
+            NamedTest("testStreamWithLargeData", testStreamWithLargeData),
+            NamedTest("testMultipleStreams", testMultipleStreams),
+            NamedTest("testFileStreamOptions", testFileStreamOptions),
+            NamedTest("testStreamWithReader", testStreamWithReader),
+            NamedTest("testStreamWithBuilder", testStreamWithBuilder)
         ]
     }
 }

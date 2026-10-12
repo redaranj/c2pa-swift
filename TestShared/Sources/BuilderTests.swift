@@ -761,33 +761,33 @@ public final class BuilderTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        return [
-            testBuilderAPI(),
-            testBuilderNoEmbed(),
-            testBuilderAddResource(),
-            testBuilderAddIngredient(),
-            testBuilderFromArchive(),
-            testBuilderRemoteURL(),
-            testBuilderSetIntentCreate(),
-            testBuilderSetIntentEdit(),
-            testBuilderSetIntentUpdate(),
-            testReadIngredient(),
-            testBuilderSetBasePath(),
-            testBuilderSupportedMimeTypes(),
-            testIngredientArchiveRoundtrip(),
-            testNeedsPlaceholder(),
-            testDataHashSigningWorkflow(),
-            testBuilderContextManifestDefinition(),
-            testBuilderAddAction(),
-            testAddIngredientFromArchive(),
-            testDataHashedPlaceholder(),
-            testFormatEmbeddable(),
-            testSignDataHashedEmbeddable(),
-            testBuilderFromArchiveRoundtrip(),
-            testBuilderHashType(),
-            testBmffMerkleHashing(),
-            testBuilderArchiveFromContext()
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testBuilderAPI", testBuilderAPI),
+            NamedTest("testBuilderNoEmbed", testBuilderNoEmbed),
+            NamedTest("testBuilderAddResource", testBuilderAddResource),
+            NamedTest("testBuilderAddIngredient", testBuilderAddIngredient),
+            NamedTest("testBuilderFromArchive", testBuilderFromArchive),
+            NamedTest("testBuilderRemoteURL", testBuilderRemoteURL),
+            NamedTest("testBuilderSetIntentCreate", testBuilderSetIntentCreate),
+            NamedTest("testBuilderSetIntentEdit", testBuilderSetIntentEdit),
+            NamedTest("testBuilderSetIntentUpdate", testBuilderSetIntentUpdate),
+            NamedTest("testReadIngredient", testReadIngredient),
+            NamedTest("testBuilderSetBasePath", testBuilderSetBasePath),
+            NamedTest("testBuilderSupportedMimeTypes", testBuilderSupportedMimeTypes),
+            NamedTest("testIngredientArchiveRoundtrip", testIngredientArchiveRoundtrip),
+            NamedTest("testNeedsPlaceholder", testNeedsPlaceholder),
+            NamedTest("testDataHashSigningWorkflow", testDataHashSigningWorkflow),
+            NamedTest("testBuilderContextManifestDefinition", testBuilderContextManifestDefinition),
+            NamedTest("testBuilderAddAction", testBuilderAddAction),
+            NamedTest("testAddIngredientFromArchive", testAddIngredientFromArchive),
+            NamedTest("testDataHashedPlaceholder", testDataHashedPlaceholder),
+            NamedTest("testFormatEmbeddable", testFormatEmbeddable),
+            NamedTest("testSignDataHashedEmbeddable", testSignDataHashedEmbeddable),
+            NamedTest("testBuilderFromArchiveRoundtrip", testBuilderFromArchiveRoundtrip),
+            NamedTest("testBuilderHashType", testBuilderHashType),
+            NamedTest("testBmffMerkleHashing", testBmffMerkleHashing),
+            NamedTest("testBuilderArchiveFromContext", testBuilderArchiveFromContext)
         ]
     }
 }

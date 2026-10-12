@@ -587,25 +587,25 @@ public final class ContextTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
+    public var allTests: [NamedTest] {
         [
-            testContextDefaultCreation(),
-            testContextFromSettings(),
-            testContextCancel(),
-            testContextCancelFromAnotherThread(),
-            testBuilderFromContext(),
-            testSettingsFlowRoundtrip(),
-            testProgressCallback(),
-            testProgressCallbackCancelsOperation(),
-            testHTTPResolver(),
-            testURLSessionHTTPResolver(),
-            testContextWithSettingsAndCallbacks(),
-            testHTTPResolverRemoteManifestFetch(),
-            testHTTPResolverErrorFailsRead(),
-            testHTTPResolverRejectsOutOfRangeStatus(),
-            testURLSessionResolverRejectsMainQueueSession(),
-            testURLSessionResolverFetchesRemoteManifest(),
-            testHTTPResolverEmptyResponseBody()
+            NamedTest("testContextDefaultCreation", testContextDefaultCreation),
+            NamedTest("testContextFromSettings", testContextFromSettings),
+            NamedTest("testContextCancel", testContextCancel),
+            NamedTest("testContextCancelFromAnotherThread", testContextCancelFromAnotherThread),
+            NamedTest("testBuilderFromContext", testBuilderFromContext),
+            NamedTest("testSettingsFlowRoundtrip", testSettingsFlowRoundtrip),
+            NamedTest("testProgressCallback", testProgressCallback),
+            NamedTest("testProgressCallbackCancelsOperation", testProgressCallbackCancelsOperation),
+            NamedTest("testHTTPResolver", testHTTPResolver),
+            NamedTest("testURLSessionHTTPResolver", testURLSessionHTTPResolver),
+            NamedTest("testContextWithSettingsAndCallbacks", testContextWithSettingsAndCallbacks),
+            NamedTest("testHTTPResolverRemoteManifestFetch", testHTTPResolverRemoteManifestFetch),
+            NamedTest("testHTTPResolverErrorFailsRead", testHTTPResolverErrorFailsRead),
+            NamedTest("testHTTPResolverRejectsOutOfRangeStatus", testHTTPResolverRejectsOutOfRangeStatus),
+            NamedTest("testURLSessionResolverRejectsMainQueueSession", testURLSessionResolverRejectsMainQueueSession),
+            NamedTest("testURLSessionResolverFetchesRemoteManifest", testURLSessionResolverFetchesRemoteManifest),
+            NamedTest("testHTTPResolverEmptyResponseBody", testHTTPResolverEmptyResponseBody)
         ]
     }
 }

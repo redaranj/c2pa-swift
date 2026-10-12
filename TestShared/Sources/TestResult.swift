@@ -76,6 +76,39 @@ public struct TestResult: Sendable {
 }
 
 // Protocol for test implementations
+/// One test from a shared suite, addressable by name.
+///
+/// Suites list their tests as data so the in-app runner and the unit-test target run the
+/// same set without either naming each test by hand.
+public struct NamedTest {
+    /// The name of the test method.
+    public let name: String
+    public let run: () async -> TestResult
+
+    public init(_ name: String, _ run: @escaping () async -> TestResult) {
+        self.name = name
+        self.run = run
+    }
+}
+
 public protocol TestImplementation {
+    init()
+
+    /// Every test in the suite, in the order they run.
+    var allTests: [NamedTest] { get }
+
     func runAllTests() async -> [TestResult]
+}
+
+extension TestImplementation {
+    /// The names of every test in the suite, in the order they run.
+    public static var testNames: [String] { Self().allTests.map(\.name) }
+
+    public func runAllTests() async -> [TestResult] {
+        var results: [TestResult] = []
+        for test in allTests {
+            results.append(await test.run())
+        }
+        return results
+    }
 }

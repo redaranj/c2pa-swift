@@ -723,21 +723,21 @@ public final class SigningTests: TestImplementation {
             testSteps.joined(separator: "\n"))
     }
 
-    public func runAllTests() async -> [TestResult] {
-        return [
-            testSignerCreation(),
-            testSignerWithCallback(),
-            testSigningAlgorithms(),
-            testSignerWithTimestampAuthority(),
-            await testWebServiceSignerCreation(),
-            testSignerWithActualSigning(),
-            testSignerFromSettingsTOML(),
-            testSignerFromSettingsJSON(),
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testSignerCreation", testSignerCreation),
+            NamedTest("testSignerWithCallback", testSignerWithCallback),
+            NamedTest("testSigningAlgorithms", testSigningAlgorithms),
+            NamedTest("testSignerWithTimestampAuthority", testSignerWithTimestampAuthority),
+            NamedTest("testWebServiceSignerCreation", testWebServiceSignerCreation),
+            NamedTest("testSignerWithActualSigning", testSignerWithActualSigning),
+            NamedTest("testSignerFromSettingsTOML", testSignerFromSettingsTOML),
+            NamedTest("testSignerFromSettingsJSON", testSignerFromSettingsJSON),
             // Edge case tests
-            testDoubleSigningImage(),
-            testZeroByteFile(),
-            testInvalidCertificateChain(),
-            testInvalidPrivateKey()
+            NamedTest("testDoubleSigningImage", testDoubleSigningImage),
+            NamedTest("testZeroByteFile", testZeroByteFile),
+            NamedTest("testInvalidCertificateChain", testInvalidCertificateChain),
+            NamedTest("testInvalidPrivateKey", testInvalidPrivateKey)
         ]
     }
 }

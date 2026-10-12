@@ -450,24 +450,24 @@ public final class ComprehensiveTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        return [
-            testLibraryVersion(),
-            testErrorHandling(),
-            testReadImageWithManifest(),
-            testInvalidFileHandling(),
-            testStreamFileOptions(),
-            testStreamFromData(),
-            testStreamFromFile(),
-            testBuilderCreation(),
-            testBuilderNoEmbed(),
-            testBuilderRemoteURL(),
-            testBuilderAddResource(),
-            testReaderCreation(),
-            testReaderWithTestImage(),
-            testSigningAlgorithms(),
-            testErrorEnumCases(),
-            testEndToEndSigning()
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testLibraryVersion", testLibraryVersion),
+            NamedTest("testErrorHandling", testErrorHandling),
+            NamedTest("testReadImageWithManifest", testReadImageWithManifest),
+            NamedTest("testInvalidFileHandling", testInvalidFileHandling),
+            NamedTest("testStreamFileOptions", testStreamFileOptions),
+            NamedTest("testStreamFromData", testStreamFromData),
+            NamedTest("testStreamFromFile", testStreamFromFile),
+            NamedTest("testBuilderCreation", testBuilderCreation),
+            NamedTest("testBuilderNoEmbed", testBuilderNoEmbed),
+            NamedTest("testBuilderRemoteURL", testBuilderRemoteURL),
+            NamedTest("testBuilderAddResource", testBuilderAddResource),
+            NamedTest("testReaderCreation", testReaderCreation),
+            NamedTest("testReaderWithTestImage", testReaderWithTestImage),
+            NamedTest("testSigningAlgorithms", testSigningAlgorithms),
+            NamedTest("testErrorEnumCases", testErrorEnumCases),
+            NamedTest("testEndToEndSigning", testEndToEndSigning)
         ]
     }
 }
