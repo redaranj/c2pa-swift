@@ -93,6 +93,7 @@ import Foundation
 ///     signer: signer
 /// )
 /// ```
+@safe
 public final class Builder {
     private let ptr: UnsafeMutablePointer<C2paBuilder>
 
@@ -102,7 +103,7 @@ public final class Builder {
 
     /// Internal initializer that adopts an already-configured native builder.
     private init(adopting ptr: UnsafeMutablePointer<C2paBuilder>, context: C2PAContext) {
-        self.ptr = ptr
+        unsafe self.ptr = unsafe ptr
         self.context = context
     }
 
@@ -155,9 +156,9 @@ public final class Builder {
     ///
     /// - SeeAlso: ``C2PAContext``
     public convenience init(context: C2PAContext, archiveStream: Stream) throws(C2PAError) {
-        let base = try guardNotNull(c2pa_builder_from_context(context.ptr))
-        let configured = try guardNotNull(c2pa_builder_with_archive(base, archiveStream.rawPtr))
-        self.init(adopting: configured, context: context)
+        let base = try unsafe guardNotNull(c2pa_builder_from_context(context.ptr))
+        let configured = try unsafe guardNotNull(c2pa_builder_with_archive(base, archiveStream.rawPtr))
+        unsafe self.init(adopting: configured, context: context)
     }
 
     /// Creates a new builder from a previously created C2PA archive stream, using a default context.
@@ -183,9 +184,9 @@ public final class Builder {
     ///
     /// - SeeAlso: ``C2PAContext``
     public convenience init(context: C2PAContext, manifestJSON: String) throws(C2PAError) {
-        let base = try guardNotNull(c2pa_builder_from_context(context.ptr))
-        let configured = try guardNotNull(c2pa_builder_with_definition(base, manifestJSON))
-        self.init(adopting: configured, context: context)
+        let base = try unsafe guardNotNull(c2pa_builder_from_context(context.ptr))
+        let configured = try unsafe guardNotNull(c2pa_builder_with_definition(base, manifestJSON))
+        unsafe self.init(adopting: configured, context: context)
     }
 
     /// Creates a new builder from a ``C2PAContext`` and a ``ManifestDefinition``.
@@ -206,7 +207,7 @@ public final class Builder {
         try self.init(context: context, manifestJSON: manifest.toJSON())
     }
 
-    deinit { _ = c2pa_free(ptr) }
+    deinit { _ = unsafe c2pa_free(ptr) }
 
     /// Sets the builder intent, specifying what kind of manifest to create.
     ///
@@ -233,7 +234,7 @@ public final class Builder {
     /// - SeeAlso: ``BuilderIntent``, ``DigitalSourceType``
     public func setIntent(_ intent: BuilderIntent) throws(C2PAError) {
         let (cIntent, cSourceType) = intent.toCIntent()
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_set_intent(ptr, cIntent, cSourceType))
         )
     }
@@ -259,7 +260,7 @@ public final class Builder {
     /// - SeeAlso: ``Action``, ``PredefinedAction``
     public func addAction(_ action: Action) throws {
         let actionJSON = try C2PAJson.encode(action)
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_add_action(ptr, actionJSON))
         )
     }
@@ -271,7 +272,7 @@ public final class Builder {
     /// where the manifest will be hosted.
     ///
     /// - SeeAlso: ``setRemote(url:)``
-    public func setNoEmbed() { c2pa_builder_set_no_embed(ptr) }
+    public func setNoEmbed() { unsafe c2pa_builder_set_no_embed(ptr) }
 
     /// Sets the remote URL where the manifest will be hosted.
     ///
@@ -286,7 +287,7 @@ public final class Builder {
     ///
     /// - SeeAlso: ``setNoEmbed()``
     public func setRemote(url: URL) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_set_remote_url(ptr, url.absoluteString))
         )
     }
@@ -297,7 +298,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if the base path cannot be set.
     public func setBasePath(_ url: URL) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_set_base_path(ptr, url.path))
         )
     }
@@ -307,8 +308,8 @@ public final class Builder {
     /// - Returns: An array of supported MIME type strings (e.g. `"image/jpeg"`).
     public static var supportedMimeTypes: [String] {
         var count: UInt = 0
-        let ptr = c2pa_builder_supported_mime_types(&count)
-        return stringArrayFromC(ptr, count: Int(count))
+        let ptr = unsafe c2pa_builder_supported_mime_types(&count)
+        return unsafe stringArrayFromC(ptr, count: Int(count))
     }
 
     /// Adds a resource to the manifest.
@@ -322,7 +323,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if the resource cannot be added.
     public func addResource(uri: String, stream: Stream) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_add_resource(ptr, uri, stream.rawPtr))
         )
     }
@@ -340,7 +341,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if the ingredient cannot be added.
     public func addIngredient(json: String, format: String, from stream: Stream) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_add_ingredient_from_stream(ptr, json, format, stream.rawPtr))
         )
     }
@@ -353,7 +354,7 @@ public final class Builder {
     ///
     /// - SeeAlso: ``writeIngredientArchive(id:to:)``
     public func addIngredient(fromArchive stream: Stream) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_add_ingredient_from_archive(ptr, stream.rawPtr))
         )
     }
@@ -368,7 +369,7 @@ public final class Builder {
     ///
     /// - SeeAlso: ``addIngredient(fromArchive:)``
     public func writeIngredientArchive(id: String, to stream: Stream) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_write_ingredient_archive(ptr, id, stream.rawPtr))
         )
     }
@@ -382,7 +383,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if the archive cannot be written.
     public func writeArchive(to dest: Stream) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_to_archive(ptr, dest.rawPtr))
         )
     }
@@ -429,7 +430,7 @@ public final class Builder {
         signer: Signer
     ) throws(C2PAError) -> Data {
         var manifestPtr: UnsafePointer<UInt8>?
-        let size = try guardNonNegative(
+        let size = try unsafe guardNonNegative(
             c2pa_builder_sign(
                 ptr,
                 format,
@@ -438,7 +439,7 @@ public final class Builder {
                 try signer.livePtr(),
                 &manifestPtr)
         )
-        return manifestData(length: size, pointer: manifestPtr)
+        return unsafe manifestData(length: size, pointer: manifestPtr)
     }
 
     /// Signs the manifest with the signer on this builder's context and embeds it.
@@ -472,7 +473,7 @@ public final class Builder {
     @discardableResult
     public func sign(format: String, source: Stream, destination: Stream) throws(C2PAError) -> Data {
         var manifestPtr: UnsafePointer<UInt8>?
-        let size = try guardNonNegative(
+        let size = try unsafe guardNonNegative(
             c2pa_builder_sign_context(
                 ptr,
                 format,
@@ -480,7 +481,7 @@ public final class Builder {
                 destination.rawPtr,
                 &manifestPtr)
         )
-        return manifestData(length: size, pointer: manifestPtr)
+        return unsafe manifestData(length: size, pointer: manifestPtr)
     }
 
     // MARK: - Embeddable & Data-Hash Signing
@@ -496,7 +497,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if the check fails or the format is unknown.
     public func needsPlaceholder(format: String) throws(C2PAError) -> Bool {
-        try guardNonNegative(Int64(c2pa_builder_needs_placeholder(ptr, format))) == 1
+        try unsafe guardNonNegative(Int64(c2pa_builder_needs_placeholder(ptr, format))) == 1
     }
 
     /// Generates a placeholder manifest of the exact final size for the given format.
@@ -513,8 +514,8 @@ public final class Builder {
     /// - Throws: ``C2PAError`` if placeholder generation fails.
     public func placeholder(format: String) throws(C2PAError) -> Data {
         var out: UnsafePointer<UInt8>?
-        let len = try guardNonNegative(c2pa_builder_placeholder(ptr, format, &out))
-        return manifestData(length: len, pointer: out)
+        let len = try unsafe guardNonNegative(c2pa_builder_placeholder(ptr, format, &out))
+        return unsafe manifestData(length: len, pointer: out)
     }
 
     /// Registers the byte ranges that must be excluded from the data hash.
@@ -531,8 +532,8 @@ public final class Builder {
         var flat: [UInt64] = []
         flat.reserveCapacity(exclusions.count * 2)
         for e in exclusions { flat.append(e.start); flat.append(e.length) }
-        try flat.withUnsafeBufferPointer { buf throws(C2PAError) in
-            _ = try guardNonNegative(Int64(
+        try unsafe flat.withUnsafeBufferPointer { buf throws(C2PAError) in
+            _ = try unsafe guardNonNegative(Int64(
                 c2pa_builder_set_data_hash_exclusions(ptr, buf.baseAddress, UInt(exclusions.count))))
         }
     }
@@ -548,7 +549,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if hashing fails.
     public func updateHashFromStream(format: String, stream: Stream) throws(C2PAError) {
-        _ = try guardNonNegative(Int64(
+        _ = try unsafe guardNonNegative(Int64(
             c2pa_builder_update_hash_from_stream(ptr, format, stream.rawPtr)))
     }
 
@@ -572,8 +573,8 @@ public final class Builder {
     @discardableResult
     public func signEmbeddable(format: String) throws(C2PAError) -> Data {
         var out: UnsafePointer<UInt8>?
-        let len = try guardNonNegative(c2pa_builder_sign_embeddable(ptr, format, &out))
-        return manifestData(length: len, pointer: out)
+        let len = try unsafe guardNonNegative(c2pa_builder_sign_embeddable(ptr, format, &out))
+        return unsafe manifestData(length: len, pointer: out)
     }
 
     /// Composes a raw C2PA manifest into an embeddable version for the given format.
@@ -596,11 +597,11 @@ public final class Builder {
         var out: UnsafePointer<UInt8>?
         // The guard sits outside the closure because `Data.withUnsafeBytes` erases the type
         // of an error thrown inside it.
-        let len = try guardNonNegative(manifest.withUnsafeBytes { buf in
-            c2pa_builder_compose_manifest(
+        let len = try unsafe guardNonNegative(manifest.withUnsafeBytes { buf in
+            unsafe c2pa_builder_compose_manifest(
                 ptr, format, buf.bindMemory(to: UInt8.self).baseAddress, UInt(manifest.count), &out)
         })
-        return manifestData(length: len, pointer: out)
+        return unsafe manifestData(length: len, pointer: out)
     }
 
     /// Composes a raw C2PA manifest into an embeddable version without a builder at hand.
@@ -632,8 +633,8 @@ public final class Builder {
     ) throws(C2PAError) -> Data {
         // Not `??`, which erases the type of an error thrown by its right-hand side.
         let context = if let context { context } else { try C2PAContext() }
-        let composer = Builder(
-            adopting: try guardNotNull(c2pa_builder_from_context(context.ptr)), context: context)
+        let adopted = try unsafe guardNotNull(c2pa_builder_from_context(context.ptr))
+        let composer = unsafe Builder(adopting: adopted, context: context)
         return try composer.composeManifest(manifest, format: format)
     }
 
@@ -647,7 +648,7 @@ public final class Builder {
     /// - Parameter fixedSizeKB: Leaf size in kilobytes.
     /// - Throws: ``C2PAError`` if the option cannot be set.
     public func setFixedSizeMerkle(_ fixedSizeKB: Int) throws(C2PAError) {
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_set_fixed_size_merkle(ptr, UInt(fixedSizeKB)))
         )
     }
@@ -665,8 +666,8 @@ public final class Builder {
     public func hashMdatBytes(mdatId: Int, data: Data, largeSize: Bool) throws(C2PAError) {
         // The guard sits outside the closure because `Data.withUnsafeBytes` erases the type
         // of an error thrown inside it.
-        _ = try guardNonNegative(data.withUnsafeBytes { buf in
-            Int64(c2pa_builder_hash_mdat_bytes(
+        _ = try unsafe guardNonNegative(data.withUnsafeBytes { buf in
+            unsafe Int64(c2pa_builder_hash_mdat_bytes(
                 ptr,
                 UInt(mdatId),
                 buf.bindMemory(to: UInt8.self).baseAddress,
@@ -682,7 +683,7 @@ public final class Builder {
     /// - Throws: ``C2PAError`` if the type cannot be resolved.
     public func hashType(format: String) throws(C2PAError) -> HashType {
         var out = DataHash
-        _ = try guardNonNegative(
+        _ = try unsafe guardNonNegative(
             Int64(c2pa_builder_hash_type(ptr, format, &out))
         )
         guard let type = HashType(c: out) else {
