@@ -63,6 +63,7 @@ import Foundation
 /// ```
 ///
 /// - SeeAlso: ``KeychainSigner``, ``SecureEnclaveSigner``, ``WebServiceSigner``
+@safe
 public final class Signer {
 
     /// The possible formats a settings string can have.
@@ -96,11 +97,11 @@ public final class Signer {
             throw C2PAError.api(
                 "Signer was consumed by withCawgIdentity(_:identity:referencedAssertions:roles:) and cannot be reused")
         }
-        return ptr
+        return unsafe ptr
     }
 
     private init(ptr: UnsafeMutablePointer<C2paSigner>) {
-        self.ptr = ptr
+        unsafe self.ptr = unsafe ptr
     }
 
     /// Creates a signer with PEM-encoded certificates and private key.
@@ -125,20 +126,20 @@ public final class Signer {
     ) throws(C2PAError) {
         // The null check sits outside the closure because `String.withCString` erases the
         // type of an error thrown inside it.
-        let raw = withSignerInfo(
+        let raw = unsafe withSignerInfo(
             algorithm: algorithm.rawValue,
             cert: certsPEM,
             key: privateKeyPEM,
             tsa: tsa
         ) { algPtr, certPtr, keyPtr, tsaPtr in
-            var info = C2paSignerInfo(
+            var info = unsafe C2paSignerInfo(
                 alg: algPtr,
                 sign_cert: certPtr,
                 private_key: keyPtr,
                 ta_url: tsaPtr)
-            return c2pa_signer_from_info(&info)
+            return unsafe c2pa_signer_from_info(&info)
         }
-        self.init(ptr: try guardNotNull(raw))
+        unsafe self.init(ptr: try guardNotNull(raw))
     }
 
     /// Creates a signer from a ``SignerInfo`` struct.
@@ -265,7 +266,7 @@ public final class Signer {
     /// - Throws: ``C2PAError`` if the settings are invalid or the signer cannot be created.
     private convenience init(settings: String, format: SettingsFormat) throws(C2PAError) {
         try Self.loadSettings(settings, format: format)
-        self.init(ptr: try guardNotNull(c2pa_signer_from_settings()))
+        unsafe self.init(ptr: try guardNotNull(c2pa_signer_from_settings()))
     }
 
     /// Loads global C2PA settings without creating a signer.
@@ -281,9 +282,9 @@ public final class Signer {
     public static func loadSettings(_ settings: String, format: SettingsFormat) throws(C2PAError) {
         // The check sits outside the closures because `String.withCString` erases the type of
         // an error thrown inside it.
-        let result = settings.withCString { settingsPtr in
-            format.rawValue.withCString { formatPtr in
-                c2pa_load_settings(settingsPtr, formatPtr)
+        let result = unsafe settings.withCString { settingsPtr in
+            unsafe format.rawValue.withCString { formatPtr in
+                unsafe c2pa_load_settings(settingsPtr, formatPtr)
             }
         }
         guard result == 0 else {
@@ -343,19 +344,19 @@ public final class Signer {
             init(_ fn: @escaping (Data) throws -> Data) { self.fn = fn }
         }
         let box = Box(sign)
-        let ref = Unmanaged.passRetained(box as AnyObject)  // Retain Box as AnyObject
+        let ref = unsafe Unmanaged.passRetained(box as AnyObject)  // Retain Box as AnyObject
 
         let tramp: SignerCallback = { ctx, bytes, len, dst, dstCap in
             // ctx is the opaque pointer to our Box instance
-            guard let ctx, let bytes, let dst else { return -1 }
-            let b = Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue()
-            let msg = Data(bytes: bytes, count: Int(len))  // len is uintptr_t (UInt)
+            guard let ctx = unsafe ctx, let bytes = unsafe bytes, let dst = unsafe dst else { return -1 }
+            let b = unsafe Unmanaged<Box>.fromOpaque(ctx).takeUnretainedValue()
+            let msg = unsafe Data(bytes: bytes, count: Int(len))  // len is uintptr_t (UInt)
 
             do {
                 let sig = try b.fn(msg)
                 // dstCap is uintptr_t (UInt)
                 guard UInt(sig.count) <= dstCap else { return -1 }  // Compare UInts
-                sig.copyBytes(to: dst, count: sig.count)
+                unsafe sig.copyBytes(to: dst, count: sig.count)
                 return sig.count
             } catch {
                 return -1
@@ -364,9 +365,9 @@ public final class Signer {
 
         var raw: UnsafeMutablePointer<C2paSigner>!
         do {
-            try certificateChainPEM.withCString { certPtr in
-                try withOptionalCString(tsa?.absoluteString) { tsaPtr in
-                    raw = try guardNotNull(
+            try unsafe certificateChainPEM.withCString { certPtr in
+                try unsafe withOptionalCString(tsa?.absoluteString) { tsaPtr in
+                    unsafe raw = try unsafe guardNotNull(
                         c2pa_signer_create(
                             ref.toOpaque(),  // Pass opaque pointer to Box instance
                             tramp,
@@ -379,17 +380,17 @@ public final class Signer {
             }
         } catch {
             // No signer was created, so deinit will never release the box.
-            ref.release()
+            unsafe ref.release()
             throw error
         }
 
-        self.init(ptr: raw)
-        retainedContext = ref  // Store the Unmanaged<AnyObject>
+        unsafe self.init(ptr: raw)
+        unsafe retainedContext = unsafe ref  // Store the Unmanaged<AnyObject>
     }
 
     deinit {
-        if !consumed { _ = c2pa_free(ptr) }
-        retainedContext?.release()
+        if !consumed { _ = unsafe c2pa_free(ptr) }
+        unsafe retainedContext?.release()
     }
 
     /// Returns the expected signature size in bytes for this signer.
@@ -401,7 +402,7 @@ public final class Signer {
     ///
     /// - Throws: ``C2PAError`` if the size cannot be determined.
     public func reserveSize() throws -> Int {
-        try Int(guardNonNegative(c2pa_signer_reserve_size(livePtr())))
+        try unsafe Int(guardNonNegative(c2pa_signer_reserve_size(livePtr())))
     }
 
     /// Combines a claim signer with an X.509 identity signer into a single signer that
@@ -447,21 +448,21 @@ public final class Signer {
         guard claimSigner !== identitySigner else {
             throw C2PAError.api("claim and identity signers must be distinct instances")
         }
-        let claimPtr = try claimSigner.livePtr()
-        let identityPtr = try identitySigner.livePtr()
-        let raw = try withCStringArray(referencedAssertions) { refs in
-            try withCStringArray(roles) { roleList in
+        let claimPtr = try unsafe claimSigner.livePtr()
+        let identityPtr = try unsafe identitySigner.livePtr()
+        let raw = try unsafe withCStringArray(referencedAssertions) { refs in
+            try unsafe withCStringArray(roles) { roleList in
                 // The native call invalidates both inputs unconditionally, so mark them
                 // consumed immediately before it runs: on failure that leaks rather than
                 // risking a double free. Marking them any earlier would also leak them when
                 // withCStringArray throws before the native call ever happens.
                 claimSigner.consumed = true
                 identitySigner.consumed = true
-                return try guardNotNull(
+                return try unsafe guardNotNull(
                     c2pa_identity_signer_create(claimPtr, identityPtr, refs, roleList))
             }
         }
-        let combined = Signer(ptr: raw)
+        let combined = unsafe Signer(ptr: raw)
         combined.consumedSigners = [claimSigner, identitySigner]
         return combined
     }
@@ -499,7 +500,7 @@ extension Signer {
         ]
 
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let status = unsafe SecItemCopyMatching(query as CFDictionary, &item)
 
         guard status == errSecSuccess,
             let privateKey = item as! SecKey?
@@ -512,9 +513,9 @@ extension Signer {
         }
 
         var error: Unmanaged<CFError>?
-        guard let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, &error) as Data?
+        guard let publicKeyData = unsafe SecKeyCopyExternalRepresentation(publicKey, &error) as Data?
         else {
-            throw C2PAError.publicKeyExportFailed(error?.takeRetainedValue())
+            throw unsafe C2PAError.publicKeyExportFailed(error?.takeRetainedValue())
         }
 
         let base64 = publicKeyData.base64EncodedString(options: [
