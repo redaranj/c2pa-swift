@@ -293,7 +293,7 @@ public final class C2PAContext: @unchecked Sendable {
         settings: C2PASettings? = nil,
         onProgress: (@Sendable (ProgressUpdate) -> ProgressDisposition)? = nil,
         httpResolver: (@Sendable (HTTPRequest) throws -> HTTPResponse)? = nil
-    ) throws {
+    ) throws(C2PAError) {
         guard settings != nil || onProgress != nil || httpResolver != nil else {
             self.init(ptr: try guardNotNull(c2pa_context_new()))
             return
@@ -301,7 +301,7 @@ public final class C2PAContext: @unchecked Sendable {
 
         let builder = try guardNotNull(c2pa_context_builder_new())
         var boxes: [any Sendable] = []
-        do {
+        do throws(C2PAError) {
             if let settings {
                 _ = try guardNonNegative(
                     Int64(c2pa_context_builder_set_settings(builder, settings.rawPtr)))
@@ -372,7 +372,7 @@ public final class C2PAContext: @unchecked Sendable {
         settings: C2PASettings? = nil,
         onProgress: (@Sendable (ProgressUpdate) -> ProgressDisposition)? = nil,
         urlSession: URLSession
-    ) throws {
+    ) throws(C2PAError) {
         guard urlSession.delegateQueue !== OperationQueue.main else {
             throw C2PAError.api(
                 "URLSession delivers on the main queue, which would deadlock the resolver")
@@ -440,7 +440,7 @@ public final class C2PAContext: @unchecked Sendable {
     /// progress observer passed to ``init(settings:onProgress:httpResolver:)``.
     ///
     /// - Throws: ``C2PAError`` if the cancellation request fails.
-    public func cancel() throws {
+    public func cancel() throws(C2PAError) {
         guard c2pa_context_cancel(ptr) == 0 else {
             throw C2PAError.api(lastC2PAError())
         }

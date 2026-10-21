@@ -980,10 +980,8 @@ public final class ManifestTests: TestImplementation {
         do {
             _ = try Builder(manifestJSON: "not valid json")
             return .failure("Builder init(manifestJSON:) invalid", "Should have thrown for invalid JSON")
-        } catch is C2PAError {
-            return .success("Builder init(manifestJSON:) invalid", "[PASS] Invalid JSON throws C2PAError")
         } catch {
-            return .failure("Builder init(manifestJSON:) invalid", "Unexpected error type: \(error)")
+            return .success("Builder init(manifestJSON:) invalid", "[PASS] Invalid JSON throws C2PAError")
         }
     }
 

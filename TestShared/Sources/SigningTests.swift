@@ -30,11 +30,9 @@ public final class SigningTests: TestImplementation {
             )
             _ = signer
             return .success("Signer Creation", "[PASS] Created PEM-based signer with valid certificates")
-        } catch let error as C2PAError {
+        } catch {
             // If certificates are invalid, this is a FAILURE not a success
             return .failure("Signer Creation", "Certificate/key error (test certs may be invalid): \(error)")
-        } catch {
-            return .failure("Signer Creation", "Failed: \(error)")
         }
     }
 
