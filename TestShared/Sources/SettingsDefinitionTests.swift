@@ -660,29 +660,29 @@ public final class SettingsDefinitionTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        return [
-            testRoundTrip(),
-            testFromJSON(),
-            testPartialSettings(),
-            testSignerLocalSerialization(),
-            testSignerRemoteSerialization(),
-            testIntentSerialization(),
-            testEnumValues(),
-            testExistingSettingsJSON(),
-            testPrettyJSON(),
-            testTrustSettings(),
-            testCoreSettings(),
-            testVerifySettings(),
-            testBuilderSettings(),
-            testFullDefinitionRoundTrip(),
-            testC2PASettingsFromDefinition(),
-            testC2PASettingsLoadDefinition(),
-            testC2PASettingsSetValue(),
-            testC2PASettingsSetValueErrors(),
-            testSignerWithRoles(),
-            testActionTemplateWithIndex(),
-            testTimestampParentScope()
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testRoundTrip", testRoundTrip),
+            NamedTest("testFromJSON", testFromJSON),
+            NamedTest("testPartialSettings", testPartialSettings),
+            NamedTest("testSignerLocalSerialization", testSignerLocalSerialization),
+            NamedTest("testSignerRemoteSerialization", testSignerRemoteSerialization),
+            NamedTest("testIntentSerialization", testIntentSerialization),
+            NamedTest("testEnumValues", testEnumValues),
+            NamedTest("testExistingSettingsJSON", testExistingSettingsJSON),
+            NamedTest("testPrettyJSON", testPrettyJSON),
+            NamedTest("testTrustSettings", testTrustSettings),
+            NamedTest("testCoreSettings", testCoreSettings),
+            NamedTest("testVerifySettings", testVerifySettings),
+            NamedTest("testBuilderSettings", testBuilderSettings),
+            NamedTest("testFullDefinitionRoundTrip", testFullDefinitionRoundTrip),
+            NamedTest("testC2PASettingsFromDefinition", testC2PASettingsFromDefinition),
+            NamedTest("testC2PASettingsLoadDefinition", testC2PASettingsLoadDefinition),
+            NamedTest("testC2PASettingsSetValue", testC2PASettingsSetValue),
+            NamedTest("testC2PASettingsSetValueErrors", testC2PASettingsSetValueErrors),
+            NamedTest("testSignerWithRoles", testSignerWithRoles),
+            NamedTest("testActionTemplateWithIndex", testActionTemplateWithIndex),
+            NamedTest("testTimestampParentScope", testTimestampParentScope)
         ]
     }
 }

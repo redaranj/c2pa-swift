@@ -553,26 +553,24 @@ public final class AssertionDefinitionTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testActionsAssertionDecoding())
-        results.append(testActionsAssertionEncoding())
-        results.append(testEmptyActionsAssertion())
-        results.append(testAssertionMetadataDecoding())
-        results.append(testAssetRefDecoding())
-        results.append(testAllAssertionTypesEncoding())
-        results.append(testAllAssertionTypesRoundTrip())
-        results.append(testAssertionEquality())
-        results.append(testCustomAssertionRoundTrip())
-        results.append(testTrainingMiningAssertion())
-        results.append(testCawgTrainingMiningAssertion())
-        results.append(testCawgIdentityAssertion())
-        results.append(testCreativeWorkAssertion())
-        results.append(testAnyCodableTypes())
-        results.append(testAnyCodableEquality())
-        results.append(testActionsV2Decoding())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testActionsAssertionDecoding", testActionsAssertionDecoding),
+            NamedTest("testActionsAssertionEncoding", testActionsAssertionEncoding),
+            NamedTest("testEmptyActionsAssertion", testEmptyActionsAssertion),
+            NamedTest("testAssertionMetadataDecoding", testAssertionMetadataDecoding),
+            NamedTest("testAssetRefDecoding", testAssetRefDecoding),
+            NamedTest("testAllAssertionTypesEncoding", testAllAssertionTypesEncoding),
+            NamedTest("testAllAssertionTypesRoundTrip", testAllAssertionTypesRoundTrip),
+            NamedTest("testAssertionEquality", testAssertionEquality),
+            NamedTest("testCustomAssertionRoundTrip", testCustomAssertionRoundTrip),
+            NamedTest("testTrainingMiningAssertion", testTrainingMiningAssertion),
+            NamedTest("testCawgTrainingMiningAssertion", testCawgTrainingMiningAssertion),
+            NamedTest("testCawgIdentityAssertion", testCawgIdentityAssertion),
+            NamedTest("testCreativeWorkAssertion", testCreativeWorkAssertion),
+            NamedTest("testAnyCodableTypes", testAnyCodableTypes),
+            NamedTest("testAnyCodableEquality", testAnyCodableEquality),
+            NamedTest("testActionsV2Decoding", testActionsV2Decoding)
+        ]
     }
 }

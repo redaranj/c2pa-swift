@@ -652,26 +652,24 @@ public final class SignerExtendedTests: TestImplementation {
             "[PASS] same-instance combine rejected, signer still usable")
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testReserveSizeES256())
-        results.append(testReserveSizeWithTSA())
-        results.append(testReserveSizeWithCallback())
-        results.append(testExportPublicKeyPEM())
-        results.append(testExportPublicKeyPEMNonExistentKey())
-        results.append(testLoadSettingsJSON())
-        results.append(testLoadSettingsTOML())
-        results.append(testLoadSettingsInvalidJSON())
-        results.append(testSignerFromSignerInfo())
-        results.append(testSignerFromSignerInfoWithTSA())
-        results.append(testSignerCallbackInvocation())
-        results.append(testSignerCallbackErrorPropagation())
-        results.append(testCawgIdentitySigner())
-        results.append(testCawgIdentitySignerReserveSize())
-        results.append(testConsumedSignerIsGuarded())
-        results.append(testCawgSameInstanceRejected())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testReserveSizeES256", testReserveSizeES256),
+            NamedTest("testReserveSizeWithTSA", testReserveSizeWithTSA),
+            NamedTest("testReserveSizeWithCallback", testReserveSizeWithCallback),
+            NamedTest("testExportPublicKeyPEM", testExportPublicKeyPEM),
+            NamedTest("testExportPublicKeyPEMNonExistentKey", testExportPublicKeyPEMNonExistentKey),
+            NamedTest("testLoadSettingsJSON", testLoadSettingsJSON),
+            NamedTest("testLoadSettingsTOML", testLoadSettingsTOML),
+            NamedTest("testLoadSettingsInvalidJSON", testLoadSettingsInvalidJSON),
+            NamedTest("testSignerFromSignerInfo", testSignerFromSignerInfo),
+            NamedTest("testSignerFromSignerInfoWithTSA", testSignerFromSignerInfoWithTSA),
+            NamedTest("testSignerCallbackInvocation", testSignerCallbackInvocation),
+            NamedTest("testSignerCallbackErrorPropagation", testSignerCallbackErrorPropagation),
+            NamedTest("testCawgIdentitySigner", testCawgIdentitySigner),
+            NamedTest("testCawgIdentitySignerReserveSize", testCawgIdentitySignerReserveSize),
+            NamedTest("testConsumedSignerIsGuarded", testConsumedSignerIsGuarded),
+            NamedTest("testCawgSameInstanceRejected", testCawgSameInstanceRejected)
+        ]
     }
 }

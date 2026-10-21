@@ -597,18 +597,16 @@ public final class CertificateManagerTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testSelfSignedCertificateChainCreation())
-        results.append(testCSRCreationWithPublicKey())
-        results.append(testCSRCreationWithKeyTag())
-        results.append(testCSRCreationWithInvalidKeyTag())
-        results.append(testSelfSignedChainDirectCall())
-        results.append(testCSRCreationRejectsEphemeralKeys())
-        results.append(testPersistentKeychainKey())
-        results.append(testSelfSignedChainWithPersistentKey())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testSelfSignedCertificateChainCreation", testSelfSignedCertificateChainCreation),
+            NamedTest("testCSRCreationWithPublicKey", testCSRCreationWithPublicKey),
+            NamedTest("testCSRCreationWithKeyTag", testCSRCreationWithKeyTag),
+            NamedTest("testCSRCreationWithInvalidKeyTag", testCSRCreationWithInvalidKeyTag),
+            NamedTest("testSelfSignedChainDirectCall", testSelfSignedChainDirectCall),
+            NamedTest("testCSRCreationRejectsEphemeralKeys", testCSRCreationRejectsEphemeralKeys),
+            NamedTest("testPersistentKeychainKey", testPersistentKeychainKey),
+            NamedTest("testSelfSignedChainWithPersistentKey", testSelfSignedChainWithPersistentKey)
+        ]
     }
 }

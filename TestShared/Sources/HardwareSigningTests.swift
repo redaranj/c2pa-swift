@@ -470,13 +470,11 @@ public final class HardwareSigningTests: TestImplementation {
         }
     }
 
-    public func runAllTests() async -> [TestResult] {
-        var results: [TestResult] = []
-
-        results.append(testKeychainSignerCreation())
-        results.append(testSecureEnclaveSignerCreation())
-        results.append(await testSecureEnclaveCSRSigning())
-
-        return results
+    public var allTests: [NamedTest] {
+        [
+            NamedTest("testKeychainSignerCreation", testKeychainSignerCreation),
+            NamedTest("testSecureEnclaveSignerCreation", testSecureEnclaveSignerCreation),
+            NamedTest("testSecureEnclaveCSRSigning", testSecureEnclaveCSRSigning)
+        ]
     }
 }
