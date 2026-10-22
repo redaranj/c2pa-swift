@@ -1,7 +1,7 @@
 .PHONY: all clean library example-app publish coverage help \
         run-example-app signing-server-start signing-server-stop signing-server-status \
         tests-with-server workspace-build test-library test-library-macos lint signing-server-wait signing-server-verify \
-        test-summary coverage-lcov validate-version test-device \
+        test-summary coverage-lcov validate-version test-device device-setup signing-server-start-lan \
         package-swift update-package-swift create-release-tag docs \
         use-dev-package use-release-package spm-build
 
@@ -12,6 +12,11 @@ SDK := iphoneos
 SIMULATOR_NAME ?= iPhone 18 Pro
 DESTINATION ?= platform=iOS Simulator,name=$(SIMULATOR_NAME)
 MACOS_DESTINATION ?= platform=macOS
+
+# Phone test runs reach the signing server on this Mac over the LAN.
+LAN_IP ?= $(shell ipconfig getifaddr en0 2>/dev/null)
+MAC_HOST ?= $(shell scutil --get LocalHostName 2>/dev/null).local
+SIGNING_SERVER_WAIT_URL ?= http://127.0.0.1:8080
 
 # Disable code signing for unit-test invocations so CI runners without
 # a Mac Development certificate can still build and run the test bundles.
@@ -148,20 +153,33 @@ coverage: library
 		-resultBundlePath TestResults.xcresult
 	@echo "Coverage report generated."
 
-# Run the library tests on a connected device, where the Secure Enclave and
-# keychain suites run instead of skipping. Signing stays on: the host app needs
-# its keychain entitlement. List devices with `xcrun xctrace list devices`.
+# Run the library tests on a connected device, where the Secure Enclave,
+# keychain and signing-server suites always run. Signing stays on: the host app
+# needs its keychain entitlement. The signing server is started on the LAN for
+# the run and stopped afterwards. List devices with `xcrun xctrace list devices`.
+test-device: export TEST_RUNNER_C2PA_REQUIRE_SIGNING_SERVER = 1
 test-device:
 	@if [ -z "$(DEVICE_ID)" ]; then echo "DEVICE_ID is required (xcrun xctrace list devices)"; exit 1; fi
+	@$(MAKE) device-setup signing-server-start-lan
+	@$(MAKE) signing-server-wait SIGNING_SERVER_WAIT_URL=http://$(LAN_IP):8080
 	@rm -rf TestResults.xcresult
-	@xcodebuild test \
+	@status=0; xcodebuild test \
 		-workspace C2PA.xcworkspace \
 		-scheme Library \
 		-testPlan C2PATests \
 		-destination 'platform=iOS,id=$(DEVICE_ID)' \
 		-resultBundlePath TestResults.xcresult \
 		-allowProvisioningUpdates \
-		$(C2PA_ARCHIVE_FLAGS)
+		$(C2PA_ARCHIVE_FLAGS) || status=$$?; \
+	$(MAKE) signing-server-stop; exit $$status
+
+# Point device builds at this Mac's signing server. The URL lands in the
+# gitignored Configurations/Local.xcconfig, which TestHost's Info.plist reads;
+# xcconfig treats // as a comment, hence http:/$$()/.
+device-setup:
+	@if [ "$(MAC_HOST)" = ".local" ]; then echo "Could not read this Mac's LocalHostName (scutil)"; exit 1; fi
+	@printf 'SIGNING_SERVER_DEVICE_URL = http:/$$()/%s:8080\n' "$(MAC_HOST)" > Configurations/Local.xcconfig
+	@echo "Device runs will use http://$(MAC_HOST):8080"
 
 # Run example app
 run-example-app: example-app
@@ -287,6 +305,14 @@ signing-server-start:
 	@echo "Signing server started"
 	@echo "Server running at http://127.0.0.1:8080 with bearer token authentication"
 
+# Start the signing server on the LAN, for a phone test run
+signing-server-start-lan:
+	@if [ -z "$(LAN_IP)" ]; then echo "No LAN address on en0; pass LAN_IP=<address>"; exit 1; fi
+	@echo "Building and starting signing server on $(LAN_IP)..."
+	@xcodebuild -workspace C2PA.xcworkspace -scheme SigningServer -configuration Debug build
+	@cd SigningServer && SIGNING_SERVER_HOST=$(LAN_IP) SIGNING_SERVER_URL=http://$(MAC_HOST):8080 SIGNING_SERVER_TOKEN=test-bearer-token-12345 nohup .build/debug/SigningServer > ../signing-server.log 2>&1 &
+	@echo "Server running at http://$(MAC_HOST):8080 ($(LAN_IP)) with bearer token authentication"
+
 # Stop the signing server
 signing-server-stop:
 	@echo "Stopping signing server..."
@@ -305,7 +331,7 @@ signing-server-wait:
 	@max_attempts=30; \
 	attempt=0; \
 	while [ $$attempt -lt $$max_attempts ]; do \
-		if curl -s http://127.0.0.1:8080/health > /dev/null 2>&1; then \
+		if curl -s $(SIGNING_SERVER_WAIT_URL)/health > /dev/null 2>&1; then \
 			echo "Signing server is ready"; \
 			break; \
 		fi; \
@@ -456,6 +482,8 @@ help:
 	@echo "  make package-swift - Package Swift sources"
 	@echo "  make update-package-swift - Update Package.swift for release"
 	@echo "  make signing-server-start - Start the signing server"
+	@echo "  make signing-server-start-lan - Start the signing server on the LAN (phone runs)"
+	@echo "  make device-setup - Point device builds at this Mac's signing server"
 	@echo "  make signing-server-stop  - Stop the signing server"
 	@echo "  make signing-server-status - Check server status"
 	@echo "  make signing-server-wait - Wait for server to be ready"
