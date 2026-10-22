@@ -136,6 +136,24 @@ enum Fixtures {
         """
     }
 
+    /// Signs a fixture with `builder` and reads the signed copy back.
+    static func signAndRead(
+        _ builder: Builder,
+        source: String = pexelsJPEG,
+        format: String = "image/jpeg",
+        signer: Signer? = nil
+    ) throws -> ManifestStore {
+        let output = tempURL(extension: (source as NSString).pathExtension)
+        defer { try? FileManager.default.removeItem(at: output) }
+        try builder.sign(
+            format: format,
+            source: stream(source),
+            destination: Stream(writeTo: output),
+            signer: signer ?? self.signer())
+        let reader = try Reader(format: format, stream: Stream(readFrom: output))
+        return try ManifestStore(json: reader.json())
+    }
+
     /// A path no other test uses, so parallel tests never share a file.
     static func tempURL(extension ext: String) -> URL {
         FileManager.default.temporaryDirectory
