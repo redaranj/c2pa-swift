@@ -1,0 +1,147 @@
+// This file is licensed to you under the Apache License, Version 2.0
+// (http://www.apache.org/licenses/LICENSE-2.0) or the MIT license
+// (http://opensource.org/licenses/MIT), at your option.
+//
+// Unless required by applicable law or agreed to in writing, this software is
+// distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR REPRESENTATIONS OF
+// ANY KIND, either express or implied. See the LICENSE-MIT and LICENSE-APACHE
+// files for the specific language governing permissions and limitations under
+// each license.
+//
+//  StreamTests.swift
+//
+
+import C2PA
+import class C2PA.Stream
+import Foundation
+import Testing
+
+/// A stream is only proven by the library reading from or writing to it, so
+/// each test drives one through a Reader or Builder and checks what came out.
+@Suite struct StreamTests {
+
+    private func activeLabel(_ stream: Stream, format: String = "image/jpeg") throws -> String {
+        try ManifestStore(json: Reader(format: format, stream: stream).json()).activeLabel
+    }
+
+    @Test func streamOperations() throws {
+        let stream = try Stream(data: Fixtures.data(Fixtures.adobeJPEG))
+        #expect(try activeLabel(stream) == Fixtures.adobeActiveManifest)
+    }
+
+    @Test func streamFileOperations() throws {
+        #expect(try activeLabel(Stream(readFrom: Fixtures.url(Fixtures.adobeJPEG))) == Fixtures.adobeActiveManifest)
+
+        let output = Fixtures.tempURL(extension: "jpg")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
+        try builder.sign(
+            format: "image/jpeg", source: Fixtures.stream(Fixtures.pexelsJPEG), destination: Stream(writeTo: output),
+            signer: Fixtures.signer())
+        #expect(try ManifestStore(json: C2PA.readFile(at: output)).assertionLabels().contains("c2pa.test"))
+    }
+
+    /// A stream with only write and flush is enough to receive a resource.
+    @Test func writeOnlyStreams() throws {
+        var captured = Data()
+        let sink = try Stream(
+            write: { buffer, count in
+                captured.append(Data(bytes: buffer, count: count))
+                return count
+            },
+            flush: { 0 })
+        let reader = try Reader(format: "image/jpeg", stream: Fixtures.stream(Fixtures.adobeJPEG))
+        try reader.resource(uri: Fixtures.adobeThumbnailURI, to: sink)
+        #expect(captured.count == 76482)
+        #expect(captured.prefix(3) == Data([0xFF, 0xD8, 0xFF]))
+    }
+
+    @Test func customStreamCallbacks() throws {
+        let data = try Fixtures.data(Fixtures.adobeJPEG)
+        var position = 0
+        var reads = 0
+        var seeks = 0
+        let stream = try Stream(
+            read: { buffer, count in
+                reads += 1
+                let size = min(count, data.count - position)
+                guard size > 0 else { return 0 }
+                data.copyBytes(to: buffer.assumingMemoryBound(to: UInt8.self), from: position..<(position + size))
+                position += size
+                return size
+            },
+            seek: { offset, origin in
+                seeks += 1
+                switch origin.rawValue {
+                case 0: position = max(0, offset)
+                case 1: position = max(0, position + offset)
+                case 2: position = max(0, data.count + offset)
+                default: break
+                }
+                return position
+            })
+        #expect(try activeLabel(stream) == Fixtures.adobeActiveManifest)
+        #expect(reads > 0)
+        #expect(seeks > 0)
+    }
+
+    /// Signs a 10 MB asset entirely from memory: the Pexels JPEG with 10 MB of
+    /// trailing bytes after its end-of-image marker.
+    @Test func streamWithLargeData() throws {
+        var large = try Fixtures.data(Fixtures.pexelsJPEG)
+        large.append(Data(repeating: 0xAB, count: 10_000_000))
+        let output = Fixtures.tempURL(extension: "jpg")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
+        try builder.sign(format: "image/jpeg", source: Stream(data: large), destination: Stream(writeTo: output), signer: Fixtures.signer())
+
+        #expect(try Data(contentsOf: output).count > large.count)
+        let store = try ManifestStore(json: C2PA.readFile(at: output))
+        #expect(try store.assertionLabels().contains("c2pa.test"))
+        #expect(store.validationState == "Valid")
+    }
+
+    @Test func multipleStreams() throws {
+        let data = try Fixtures.data(Fixtures.adobeJPEG)
+        let streams = try (0..<10).map { _ in try Stream(data: data) }
+        let labels = try streams.map { try activeLabel($0) }
+        #expect(labels == Array(repeating: Fixtures.adobeActiveManifest, count: 10))
+    }
+
+    @Test func fileStreamOptions() throws {
+        let file = Fixtures.tempURL(extension: "dat")
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        _ = try Stream(writeTo: file)
+        #expect(FileManager.default.fileExists(atPath: file.path), "writeTo creates the file")
+
+        let content = Data("Stream options test data".utf8)
+        try content.write(to: file)
+        _ = try Stream(update: file)
+        #expect(try Data(contentsOf: file) == content, "update keeps the existing content")
+
+        _ = try Stream(writeTo: file)
+        #expect(try Data(contentsOf: file).isEmpty, "writeTo truncates")
+    }
+
+    @Test func fileStreamsRequireAnExistingFile() {
+        let missing = Fixtures.tempURL(extension: "dat")
+        #expect(throws: (any Error).self, "readFrom a missing file") { try Stream(readFrom: missing) }
+        #expect(throws: (any Error).self, "update a missing file") { try Stream(update: missing) }
+    }
+
+    @Test func streamWithReader() throws {
+        #expect(try activeLabel(Stream(data: Fixtures.data(Fixtures.adobeJPEG))) == Fixtures.adobeActiveManifest)
+    }
+
+    @Test func streamWithBuilder() throws {
+        let output = Fixtures.tempURL(extension: "jpg")
+        defer { try? FileManager.default.removeItem(at: output) }
+        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON(claimGenerator: "StreamTest/1.0"))
+        let manifest = try builder.sign(
+            format: "image/jpeg", source: Fixtures.stream(Fixtures.pexelsJPEG), destination: Stream(writeTo: output),
+            signer: Fixtures.signer())
+        #expect(!manifest.isEmpty, "sign returns the manifest bytes it embedded")
+        #expect(try ManifestStore(json: C2PA.readFile(at: output)).assertionLabels().contains("c2pa.test"))
+    }
+}
