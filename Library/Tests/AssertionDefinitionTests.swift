@@ -179,7 +179,16 @@ import Testing
             return
         }
         #expect(label == "com.example.test")
-        #expect(data == AnyCodable(["key": "value", "number": 42] as [String: Any]))
+        let fields = try #require(data.value as? [String: Any])
+        #expect(fields["key"] as? String == "value")
+        #expect(fields["number"] as? Int == 42)
+        #expect(fields.count == 2)
+
+        // AnyCodable's == compares unsorted JSON, so equal multi-key
+        // dictionaries compare unequal whenever their key order differs.
+        withKnownIssue("AnyCodable equality depends on dictionary key order", isIntermittent: true) {
+            #expect(data == AnyCodable(["key": "value", "number": 42] as [String: Any]))
+        }
     }
 
     @Test func trainingMiningAssertion() throws {
