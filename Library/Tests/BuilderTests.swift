@@ -12,7 +12,7 @@
 //
 
 import C2PA
-import class C2PA.Stream
+import class C2PA.Stream // swiftlint:disable:this duplicate_imports
 import Foundation
 import Testing
 
@@ -36,7 +36,7 @@ import Testing
         var object = try #require(
             try JSONSerialization.jsonObject(with: Data(Fixtures.createdManifestJSON().utf8)) as? [String: Any])
         object.merge(extra) { _, new in new }
-        return String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+        return try JSONSerialization.data(withJSONObject: object).utf8Text
     }
 
     /// Settings whose local signer is the test certificate, for the
@@ -44,10 +44,10 @@ import Testing
     private func signerContext(extra: [String: Any] = [:]) throws -> C2PAContext {
         var settings: [String: Any] = [
             "version": 1,
-            "signer": ["local": ["alg": "es256", "sign_cert": try Fixtures.certsPEM(), "private_key": try Fixtures.privateKeyPEM()]],
+            "signer": ["local": ["alg": "es256", "sign_cert": try Fixtures.certsPEM(), "private_key": try Fixtures.privateKeyPEM()]]
         ]
         settings.merge(extra) { _, new in new }
-        let json = String(decoding: try JSONSerialization.data(withJSONObject: settings), as: UTF8.self)
+        let json = try JSONSerialization.data(withJSONObject: settings).utf8Text
         return try C2PAContext(settings: C2PASettings(json: json))
     }
 
@@ -204,7 +204,7 @@ import Testing
         let archiveURL = Fixtures.tempURL(extension: "c2pa")
         defer { try? FileManager.default.removeItem(at: archiveURL) }
         try exporter.writeIngredientArchive(id: "archive-ingredient", to: Stream(writeTo: archiveURL))
-        #expect(try Data(contentsOf: archiveURL).count > 0)
+        #expect(try !Data(contentsOf: archiveURL).isEmpty)
 
         let importer = try Builder(manifestJSON: Fixtures.createdManifestJSON())
         try importer.addIngredient(fromArchive: Stream(readFrom: archiveURL))

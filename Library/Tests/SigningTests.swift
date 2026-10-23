@@ -12,7 +12,7 @@
 //
 
 import C2PA
-import class C2PA.Stream
+import class C2PA.Stream // swiftlint:disable:this duplicate_imports
 import Foundation
 import Security
 import Testing
@@ -50,7 +50,7 @@ private final class CallRecorder: @unchecked Sendable {
         var assertions = try #require(object["assertions"] as? [[String: Any]])
         assertions.append(["label": "cawg.training-mining", "data": ["entries": ["cawg.ai_inference": ["use": "notAllowed"]]]])
         object["assertions"] = assertions
-        return String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+        return try JSONSerialization.data(withJSONObject: object).utf8Text
     }
 
     private func signAndRead(_ signer: Signer, manifestJSON: String = Fixtures.createdManifestJSON()) throws -> ManifestStore {
@@ -79,7 +79,7 @@ private final class CallRecorder: @unchecked Sendable {
     @Test(arguments: [
         "-----BEGIN CERTIFICATE-----",
         "-----BEGIN CERTIFICATE-----\nnotbase64!!!\n-----END CERTIFICATE-----",
-        "-----BEGIN CERTIFICATE-----\nTUlJQ2\n-----END CERTIFICATE-----",
+        "-----BEGIN CERTIFICATE-----\nTUlJQ2\n-----END CERTIFICATE-----"
     ])
     func invalidCertificateChain(certsPEM: String) throws {
         let key = try Fixtures.privateKeyPEM()
@@ -109,7 +109,7 @@ private final class CallRecorder: @unchecked Sendable {
         "",
         "this is definitely not a private key",
         "-----BEGIN PRIVATE KEY-----",
-        "-----BEGIN RSA PRIVATE KEY-----\nTUlJQ2\n-----END RSA PRIVATE KEY-----",
+        "-----BEGIN RSA PRIVATE KEY-----\nTUlJQ2\n-----END RSA PRIVATE KEY-----"
     ])
     func invalidPrivateKey(privateKeyPEM: String) throws {
         let certs = try Fixtures.certsPEM()
