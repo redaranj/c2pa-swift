@@ -51,6 +51,13 @@ import Testing
         return try C2PAContext(settings: C2PASettings(json: json))
     }
 
+    /// A builder that can write ingredient archives: c2pa-rs refuses unless
+    /// builder.generate_c2pa_archive is on.
+    private func ingredientArchiveBuilder() throws -> Builder {
+        let settings = try C2PASettings(json: #"{"version": 1, "builder": {"generate_c2pa_archive": true}}"#)
+        return try Builder(context: C2PAContext(settings: settings), manifestJSON: Fixtures.createdManifestJSON())
+    }
+
     private func archive(_ builder: Builder) throws -> URL {
         let url = Fixtures.tempURL(extension: "c2pa")
         try builder.writeArchive(to: Stream(writeTo: url))
@@ -187,15 +194,16 @@ import Testing
         #expect(try thumbnailBytes(of: signed.url) == Fixtures.tinyPNG())
     }
 
+    /// An ingredient is exported by its label (or instance_id), not its title.
     @Test func ingredientArchiveRoundtrip() throws {
-        let exporter = try Builder(manifestJSON: Fixtures.createdManifestJSON())
+        let exporter = try ingredientArchiveBuilder()
         try exporter.addIngredient(
-            json: #"{"title": "archive_ingredient.jpg", "relationship": "componentOf"}"#,
+            json: #"{"title": "archive_ingredient.jpg", "label": "archive-ingredient", "relationship": "componentOf"}"#,
             format: "image/jpeg",
             from: Fixtures.stream(Fixtures.pexelsJPEG))
         let archiveURL = Fixtures.tempURL(extension: "c2pa")
         defer { try? FileManager.default.removeItem(at: archiveURL) }
-        try exporter.writeIngredientArchive(id: "archive_ingredient.jpg", to: Stream(writeTo: archiveURL))
+        try exporter.writeIngredientArchive(id: "archive-ingredient", to: Stream(writeTo: archiveURL))
         #expect(try Data(contentsOf: archiveURL).count > 0)
 
         let importer = try Builder(manifestJSON: Fixtures.createdManifestJSON())
@@ -205,14 +213,14 @@ import Testing
     }
 
     @Test func addIngredientFromArchive() throws {
-        let exporter = try Builder(manifestJSON: Fixtures.createdManifestJSON())
+        let exporter = try ingredientArchiveBuilder()
         try exporter.addIngredient(
-            json: #"{"title": "ing.jpg", "relationship": "componentOf"}"#,
+            json: #"{"title": "ing.jpg", "instance_id": "xmp:iid:ing-1", "relationship": "componentOf"}"#,
             format: "image/jpeg",
             from: Fixtures.stream(Fixtures.pexelsJPEG))
         let archiveURL = Fixtures.tempURL(extension: "c2pa")
         defer { try? FileManager.default.removeItem(at: archiveURL) }
-        try exporter.writeIngredientArchive(id: "ing.jpg", to: Stream(writeTo: archiveURL))
+        try exporter.writeIngredientArchive(id: "xmp:iid:ing-1", to: Stream(writeTo: archiveURL))
 
         let importer = try Builder(manifestJSON: Fixtures.createdManifestJSON())
         try importer.addIngredient(fromArchive: Stream(readFrom: archiveURL))
