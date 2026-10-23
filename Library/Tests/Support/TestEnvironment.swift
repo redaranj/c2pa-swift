@@ -28,29 +28,20 @@ enum TestEnvironment {
     static let isPhysicalDevice = false
     #endif
 
-    /// The result of creating and deleting a permanent P-256 key. Without a
-    /// keychain entitlement (unsigned CI builds) this is errSecMissingEntitlement.
+    /// The result of creating and deleting a permanent P-256 key the way the
+    /// keychain tests do. Without a keychain entitlement (unsigned CI builds)
+    /// this is errSecMissingEntitlement.
     static let keychainProbeStatus: OSStatus = {
-        let tag = Data("org.contentauth.test.probe.\(UUID().uuidString)".utf8)
-        let attributes: [String: Any] = [
-            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-            kSecAttrKeySizeInBits as String: 256,
-            kSecPrivateKeyAttrs as String: [
-                kSecAttrIsPermanent as String: true,
-                kSecAttrApplicationTag as String: tag,
-            ],
-        ]
-        var error: Unmanaged<CFError>?
-        guard SecKeyCreateRandomKey(attributes as CFDictionary, &error) != nil else {
-            let status = error.map { OSStatus(truncatingIfNeeded: ($0.takeRetainedValue() as Error as NSError).code) }
-            return status ?? errSecParam
+        let tag = Fixtures.uniqueKeyTag("probe")
+        defer { TestKeychain.deleteKey(tag: tag) }
+        do {
+            try TestKeychain.createKey(tag: tag)
+            return errSecSuccess
+        } catch TestKeychainError.keyCreationFailed(let status) {
+            return status
+        } catch {
+            return errSecParam
         }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: tag,
-        ]
-        _ = SecItemDelete(query as CFDictionary)
-        return errSecSuccess
     }()
 
     static var keychainAvailable: Bool {
@@ -83,6 +74,23 @@ enum TestEnvironment {
     /// server suites: always on a device, and under make tests-with-server or CI.
     static var signingServerRequired: Bool {
         isPhysicalDevice || ProcessInfo.processInfo.environment["C2PA_REQUIRE_SIGNING_SERVER"] == "1"
+    }
+
+    /// What to run when the server cannot be reached. On a device the URL
+    /// comes from make device-setup; without it the plan's loopback default
+    /// names the phone itself.
+    static var signingServerInstructions: String {
+        isPhysicalDevice
+            ? "Run make device-setup and make signing-server-start-lan on the Mac (or use make test-device), then run again."
+            : "Start it with make signing-server-start (make tests-with-server starts and stops it for you)."
+    }
+
+    /// Fails the calling test, with the instructions, when the server is down.
+    static func requireSigningServer(sourceLocation: SourceLocation = #_sourceLocation) async throws {
+        try #require(
+            await signingServerReachable(),
+            "Signing server not reachable at \(signingServerURL). \(signingServerInstructions)",
+            sourceLocation: sourceLocation)
     }
 
     static func signingServerReachable() async -> Bool {

@@ -71,11 +71,7 @@ import Testing
 @Suite struct TestEnvironmentTests {
 
     @Test(.enabled(if: TestEnvironment.signingServerRequired, "The signing server is optional in this run"))
-    func signingServerReachableWhenRequired() async {
-        let url = TestEnvironment.signingServerURL
-        #expect(
-            await TestEnvironment.signingServerReachable(),
-            "Signing server not reachable at \(url). Start it with make signing-server-start (or make signing-server-start-lan for a phone run)."
-        )
+    func signingServerReachableWhenRequired() async throws {
+        try await TestEnvironment.requireSigningServer()
     }
 }

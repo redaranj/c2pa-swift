@@ -183,9 +183,12 @@ private final class StubURLProtocol: URLProtocol {
         #expect(try signThroughContext(context).assertionLabels().contains("c2pa.test"))
     }
 
+    /// cancel() is callable from another thread, and like contextCancel it
+    /// leaves the context usable when nothing was in flight.
     @Test func contextCancelFromAnotherThread() async throws {
         let context = try C2PAContext()
         try await Task.detached { try context.cancel() }.value
+        #expect(try signThroughContext(context).assertionLabels().contains("c2pa.test"))
     }
 
     @Test func progressCallback() throws {

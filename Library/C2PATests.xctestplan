@@ -37,7 +37,7 @@
   },
   "testTargets" : [
     {
-      "parallelizable" : false,
+      "parallelizable" : true,
       "target" : {
         "containerPath" : "container:Library.xcodeproj",
         "identifier" : "953469D82E4D2578003E83AD",

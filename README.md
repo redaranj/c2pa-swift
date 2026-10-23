@@ -81,7 +81,19 @@ make coverage
 
 The tests run inside `TestHost`, a minimal app in `Library.xcodeproj` that gives
 them a keychain entitlement. On a simulator or macOS the Secure Enclave suites
-are skipped with a stated reason; on a physical device they always run.
+are skipped with a stated reason; on a physical device they always run, and so
+do the keychain and signing-server suites.
+
+To run on a phone from Xcode instead of `make test-device`, start the signing
+server on the LAN first, then run the Library scheme's tests against the phone:
+
+```bash
+make device-setup              # writes this Mac's .local URL into Configurations/Local.xcconfig
+make signing-server-start-lan  # binds the server to this Mac's LAN address
+```
+
+The first run on a phone asks for local network access, and macOS may ask
+whether SigningServer may accept incoming connections; allow both.
 
 ### Building against a local c2pa-rs checkout
 
