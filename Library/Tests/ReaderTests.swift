@@ -81,10 +81,12 @@ import Testing
         #expect(try ManifestStore(json: reader.json()).validationState == "Valid")
     }
 
-    @Test func readerRejectsUnknownFormat() {
-        #expect(throws: C2PAError.self) {
-            try Reader(format: "invalid/format", stream: Fixtures.stream(Fixtures.adobeJPEG))
-        }
+    /// The doc only promises an error for an unreadable stream or a missing
+    /// manifest; c2pa identifies a JPEG by its content, so a wrong format
+    /// string still reads the manifest.
+    @Test func readerSniffsContentDespiteFormatString() throws {
+        let reader = try Reader(format: "invalid/format", stream: Fixtures.stream(Fixtures.adobeJPEG))
+        #expect(try ManifestStore(json: reader.json()).activeLabel == Fixtures.adobeActiveManifest)
     }
 
     @Test func readerIngredientExtraction() throws {
