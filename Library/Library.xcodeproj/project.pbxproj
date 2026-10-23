@@ -83,7 +83,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		427F482DDD66BD234AC60028 /* TestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		427F482DDD66BD234AC60028 /* TestHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TestHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8A1234501234567890ABCDEF /* C2PA.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = C2PA.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8A1234551234567890ABCDEF /* C2PA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = C2PA.swift; sourceTree = "<group>"; };
 		8A1234571234567890ABCDEF /* CertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CertificateManager.swift; sourceTree = "<group>"; };
@@ -109,7 +109,7 @@
 		A0C2A0092E96B00100F2F938 /* SettingsDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDefinition.swift; sourceTree = "<group>"; };
 		C20AC07E97000000000B0002 /* C2PAContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = C2PAContext.swift; sourceTree = "<group>"; };
 		E144AFDCDFEEF87870D82BA3 /* TestHost-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "TestHost-Info.plist"; sourceTree = "<group>"; };
-		F21C5CAFFC979DE5F27DA521 /* C2PATests.xctestplan */ = {isa = PBXFileReference; includeInIndex = 1; path = C2PATests.xctestplan; sourceTree = "<group>"; };
+		F21C5CAFFC979DE5F27DA521 /* C2PATests.xctestplan */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text; path = C2PATests.xctestplan; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
