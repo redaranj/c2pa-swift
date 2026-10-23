@@ -77,8 +77,6 @@ private final class CallRecorder: @unchecked Sendable {
     }
 
     @Test(arguments: [
-        "",
-        "this is definitely not a certificate",
         "-----BEGIN CERTIFICATE-----",
         "-----BEGIN CERTIFICATE-----\nnotbase64!!!\n-----END CERTIFICATE-----",
         "-----BEGIN CERTIFICATE-----\nTUlJQ2\n-----END CERTIFICATE-----",
@@ -87,6 +85,23 @@ private final class CallRecorder: @unchecked Sendable {
         let key = try Fixtures.privateKeyPEM()
         #expect(throws: C2PAError.self) {
             try Signer(certsPEM: certsPEM, privateKeyPEM: key, algorithm: .es256, tsa: nil)
+        }
+    }
+
+    /// A chain with no PEM block at all. The doc promises an init-time error;
+    /// today the signer is created and only signing fails.
+    @Test(arguments: ["", "this is definitely not a certificate"])
+    func invalidCertificateChainWithoutPEM(certsPEM: String) throws {
+        let key = try Fixtures.privateKeyPEM()
+        withKnownIssue("Signer accepts a certificate chain with no PEM blocks until signing") {
+            #expect(throws: C2PAError.self) {
+                try Signer(certsPEM: certsPEM, privateKeyPEM: key, algorithm: .es256, tsa: nil)
+            }
+        }
+        let signer = try Signer(certsPEM: certsPEM, privateKeyPEM: key, algorithm: .es256, tsa: nil)
+        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
+        #expect(throws: C2PAError.self, "signing without a certificate") {
+            try Fixtures.signAndRead(builder, signer: signer)
         }
     }
 

@@ -328,14 +328,25 @@ import Testing
         #expect(embeddable.prefix(2) == Data([0xFF, 0xEB]), "expected a JPEG APP11 marker")
     }
 
+    /// The legacy data-hash sequence, which c2pa-rs requires in this order:
+    /// a placeholder from the same builder goes into the asset, the data hash
+    /// excludes it, and the signed manifest replaces it byte for byte.
     @Test func signDataHashedEmbeddable() throws {
         let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
+        let signer = try Fixtures.signer()
+        let placeholder = try builder.dataHashedPlaceholder(reservedSize: signer.reserveSize(), format: "image/jpeg")
+        var asset = try Fixtures.data(Fixtures.pexelsJPEG)
+        asset.insert(contentsOf: placeholder, at: 2)
+
+        let dataHash = #"{"exclusions": [{"start": 2, "length": \#(placeholder.count)}], "name": "jumbf manifest", "alg": "sha256", "hash": "", "pad": " "}"#
         let embeddable = try builder.signDataHashedEmbeddable(
-            signer: Fixtures.signer(),
-            dataHash: #"{"exclusions": [], "name": "jumbf manifest", "alg": "sha256", "hash": "", "pad": " "}"#,
-            format: "image/jpeg",
-            asset: Fixtures.stream(Fixtures.pexelsJPEG))
-        #expect(embeddable.range(of: jumbfLabel) != nil, "no c2pa manifest store in the embeddable bytes")
+            signer: signer, dataHash: dataHash, format: "image/jpeg", asset: Stream(data: asset))
+        try #require(embeddable.count == placeholder.count, "signed \(embeddable.count) bytes into a \(placeholder.count)-byte placeholder")
+        asset.replaceSubrange(2..<(2 + placeholder.count), with: embeddable)
+
+        let store = try ManifestStore(json: Reader(format: "image/jpeg", stream: Stream(data: asset)).json())
+        #expect(try store.assertionLabels().contains("c2pa.test"))
+        #expect(store.validationState == "Valid")
     }
 
     /// The fragmented BMFF flow; the asset itself won't validate (the mdat
