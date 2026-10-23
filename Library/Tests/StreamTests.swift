@@ -12,7 +12,7 @@
 //
 
 import C2PA
-import class C2PA.Stream
+import class C2PA.Stream // swiftlint:disable:this duplicate_imports
 import Foundation
 import Testing
 

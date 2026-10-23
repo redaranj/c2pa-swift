@@ -31,8 +31,8 @@ enum TestKeychain {
             kSecPrivateKeyAttrs as String: [
                 kSecAttrIsPermanent as String: true,
                 kSecAttrApplicationTag as String: tag,
-                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            ],
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            ]
         ]
         var error: Unmanaged<CFError>?
         guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {
@@ -45,7 +45,7 @@ enum TestKeychain {
     static func deleteKey(tag: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
-            kSecAttrApplicationTag as String: tag,
+            kSecAttrApplicationTag as String: tag
         ]
         _ = SecItemDelete(query as CFDictionary)
     }
@@ -54,7 +54,7 @@ enum TestKeychain {
         let query: [String: Any] = [
             kSecClass as String: kSecClassKey,
             kSecAttrApplicationTag as String: tag,
-            kSecReturnRef as String: true,
+            kSecReturnRef as String: true
         ]
         var item: CFTypeRef?
         return SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess

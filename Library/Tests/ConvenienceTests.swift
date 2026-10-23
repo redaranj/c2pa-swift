@@ -83,7 +83,7 @@ import Testing
         "",
         "this is definitely not json",
         "{",
-        #"{"foo": "bar"}"#,
+        #"{"foo": "bar"}"#
     ])
     func signFileWithInvalidManifest(manifestJSON: String) throws {
         let destination = Fixtures.tempURL(extension: "jpg")

@@ -89,11 +89,11 @@ import FoundationNetworking
         request.timeoutInterval = 30
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "csr": csr,
-            "metadata": ["device_id": "test-device", "app_version": "1.0.0"],
+            "metadata": ["device_id": "test-device", "app_version": "1.0.0"]
         ])
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode
-        try #require(status == 200, "CSR submission returned \(String(describing: status)): \(String(decoding: data, as: UTF8.self))")
+        try #require(status == 200, "CSR submission returned \(String(describing: status)): \(data.utf8Text)")
 
         let body = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         let chain = try #require(body["certificate_chain"] as? String, "response keys: \(body.keys.sorted())")

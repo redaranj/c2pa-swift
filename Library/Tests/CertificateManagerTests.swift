@@ -34,7 +34,7 @@ import Testing
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
-            kSecAttrIsPermanent as String: false,
+            kSecAttrIsPermanent as String: false
         ]
         var error: Unmanaged<CFError>?
         let key = try #require(SecKeyCreateRandomKey(attributes as CFDictionary, &error))

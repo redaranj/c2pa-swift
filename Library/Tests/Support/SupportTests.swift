@@ -26,10 +26,10 @@ import Testing
     @Test(arguments: [
         Fixtures.adobeJPEG, Fixtures.pexelsJPEG, Fixtures.videoMP4,
         "es256_certs.pem", "es256_private.key",
-        "test_settings_with_cawg_signing.json", "test_settings_with_cawg_signing.toml",
+        "test_settings_with_cawg_signing.json", "test_settings_with_cawg_signing.toml"
     ])
     func everyFixtureLoads(name: String) throws {
-        #expect(try Fixtures.data(name).count > 0)
+        #expect(try !Fixtures.data(name).isEmpty)
     }
 
     @Test func tempURLsAreUnique() {

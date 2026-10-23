@@ -54,7 +54,7 @@ import Testing
     @Test func enumRendering() throws {
         let shape = Shape(type: .rectangle, origin: .init(x: 10, y: 10), width: 80, height: 80, unit: .percent)
         let data = try JSONEncoder().encode(shape)
-        #expect(try JSONDecoder().decode(Shape.self, from: data) == shape, "JSON: \(String(decoding: data, as: UTF8.self))")
+        #expect(try JSONDecoder().decode(Shape.self, from: data) == shape, "JSON: \(data.utf8Text)")
     }
 
     @Test func regionOfInterest() {
@@ -133,7 +133,7 @@ import Testing
         (.fontOpenTypeFeatureAdded, "font.openTypeFeatureAdded"),
         (.fontOpenTypeFeatureModified, "font.openTypeFeatureModified"),
         (.fontOpenTypeFeatureRemoved, "font.openTypeFeatureRemoved"),
-        (.fontSubset, "font.subset"),
+        (.fontSubset, "font.subset")
     ])
     func newPredefinedActions(action: PredefinedAction, expected: String) {
         #expect(action.rawValue == expected)
@@ -177,7 +177,7 @@ import Testing
             digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCapture",
             softwareAgent: "TestApp"
         )
-        let json = String(decoding: try JSONEncoder().encode(action), as: UTF8.self)
+        let json = try JSONEncoder().encode(action).utf8Text
         for key in ["\"digitalSourceType\"", "\"softwareAgent\""] {
             #expect(json.contains(key), "encoded JSON is missing \(key): \(json)")
         }
@@ -234,7 +234,7 @@ import Testing
                         validationStatus: [])),
                 expected: [
                     "active_manifest", "data_types", "document_id", "informational_URI",
-                    "instance_id", "validation_results", "validation_status",
+                    "instance_id", "validation_results", "validation_status"
                 ]),
             WireKeyCheck(
                 model: "ValidationResults",
@@ -271,7 +271,7 @@ import Testing
                         claimGeneratorInfo: [ClaimGeneratorInfo(name: "TestApp")],
                         instanceId: "instance-1",
                         title: "wire-key drift check")),
-                expected: ["claim_generator_info", "claim_version", "instance_id"]),
+                expected: ["claim_generator_info", "claim_version", "instance_id"])
         ]
     }
 
@@ -307,7 +307,7 @@ import Testing
         #expect(extras["name"] == nil, "a modeled key leaked into additionalFields")
 
         let reencoded = try JSONEncoder().encode(decoded)
-        let json = String(decoding: reencoded, as: UTF8.self)
+        let json = reencoded.utf8Text
         for key in ["\"vendorSpecific\"", "\"buildCount\"", "\"operating_system\""] {
             #expect(json.contains(key), "re-encoded JSON dropped \(key): \(json)")
         }
@@ -324,7 +324,7 @@ import Testing
         #expect(decoded.operatingSystem == "macOS 15")
         #expect(decoded.additionalFields == nil, "the alias key leaked into additionalFields")
 
-        let json = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+        let json = try JSONEncoder().encode(decoded).utf8Text
         #expect(json.contains("\"operating_system\""))
         #expect(!json.contains("schema.org"), "re-encoded using the alias spelling: \(json)")
     }
@@ -338,7 +338,7 @@ import Testing
         #expect(Set(try #require(decoded.additionalFields).keys) == ["org.example.custom", "weight"])
         #expect(decoded.dataSource?.type == "signer")
 
-        let json = String(decoding: try JSONEncoder().encode(decoded), as: UTF8.self)
+        let json = try JSONEncoder().encode(decoded).utf8Text
         for key in ["\"org.example.custom\"", "\"weight\"", "\"dataSource\""] {
             #expect(json.contains(key), "re-encoded JSON dropped \(key): \(json)")
         }

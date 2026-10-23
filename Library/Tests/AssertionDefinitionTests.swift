@@ -37,7 +37,7 @@ import Testing
         "softBinding": "c2pa.soft-binding",
         "thumbnailClaim": "c2pa.thumbnail.claim",
         "thumbnailIngredient": "c2pa.thumbnail.ingredient",
-        "timeStamps": "c2pa.time-stamp",
+        "timeStamps": "c2pa.time-stamp"
     ]
 
     static func standardAssertion(_ name: String) -> AssertionDefinition? {
@@ -97,9 +97,9 @@ import Testing
     @Test func actionsAssertionEncoding() throws {
         let assertion = AssertionDefinition.actions(actions: [
             Action(action: PredefinedAction.created, digitalSourceType: DigitalSourceType.algorithmicMedia),
-            Action(action: PredefinedAction.edited.rawValue),
+            Action(action: PredefinedAction.edited.rawValue)
         ])
-        let json = String(decoding: try JSONEncoder().encode(assertion), as: UTF8.self)
+        let json = try JSONEncoder().encode(assertion).utf8Text
         #expect(json.contains("c2pa.actions"))
 
         guard case .actions(let actions) = try roundTrip(assertion) else {
@@ -194,7 +194,7 @@ import Testing
     @Test func trainingMiningAssertion() throws {
         let assertion = AssertionDefinition.trainingMining(entries: [
             TrainingMiningEntry(use: "notAllowed"),
-            TrainingMiningEntry(use: "constrained", constraintInfo: "License required"),
+            TrainingMiningEntry(use: "constrained", constraintInfo: "License required")
         ])
         let decoded = try roundTrip(assertion)
         guard case .trainingMining(let entries) = decoded else {
@@ -222,7 +222,7 @@ import Testing
     @Test func cawgIdentityAssertion() throws {
         let assertion = AssertionDefinition.cawgIdentity(data: [
             "sig_type": AnyCodable("cawg.x509"),
-            "pad1": AnyCodable(0),
+            "pad1": AnyCodable(0)
         ])
         let decoded = try roundTrip(assertion)
         guard case .cawgIdentity(let data) = decoded else {
@@ -235,7 +235,7 @@ import Testing
     @Test func creativeWorkAssertion() throws {
         let assertion = AssertionDefinition.creativeWork(data: [
             "@type": AnyCodable("CreativeWork"),
-            "author": AnyCodable(["@type": "Person", "name": "Test Author"] as [String: Any]),
+            "author": AnyCodable(["@type": "Person", "name": "Test Author"] as [String: Any])
         ])
         let decoded = try roundTrip(assertion)
         guard case .creativeWork(let data) = decoded else {
