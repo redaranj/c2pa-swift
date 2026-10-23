@@ -91,7 +91,7 @@ public final class Signer {
     /// fails with a clear error rather than dereferencing memory it no longer owns.
     ///
     /// - Throws: ``C2PAError`` if this signer was consumed.
-    func livePtr() throws -> UnsafeMutablePointer<C2paSigner> {
+    func livePtr() throws(C2PAError) -> UnsafeMutablePointer<C2paSigner> {
         guard !consumed else {
             throw C2PAError.api(
                 "Signer was consumed by withCawgIdentity(_:identity:referencedAssertions:roles:) and cannot be reused")
@@ -122,9 +122,10 @@ public final class Signer {
         privateKeyPEM: String,
         algorithm: SigningAlgorithm,
         tsa: URL? = nil
-    ) throws {
-        var raw: UnsafeMutablePointer<C2paSigner>!
-        try withSignerInfo(
+    ) throws(C2PAError) {
+        // The null check sits outside the closure because `String.withCString` erases the
+        // type of an error thrown inside it.
+        let raw = withSignerInfo(
             algorithm: algorithm.rawValue,
             cert: certsPEM,
             key: privateKeyPEM,
@@ -135,9 +136,9 @@ public final class Signer {
                 sign_cert: certPtr,
                 private_key: keyPtr,
                 ta_url: tsaPtr)
-            raw = try guardNotNull(c2pa_signer_from_info(&info))
+            return c2pa_signer_from_info(&info)
         }
-        self.init(ptr: raw)
+        self.init(ptr: try guardNotNull(raw))
     }
 
     /// Creates a signer from a ``SignerInfo`` struct.
@@ -150,7 +151,7 @@ public final class Signer {
     /// - Throws: ``C2PAError`` if the credentials are invalid or incompatible.
     ///
     /// - SeeAlso: ``SignerInfo``
-    public convenience init(info: SignerInfo) throws {
+    public convenience init(info: SignerInfo) throws(C2PAError) {
         try self.init(
             certsPEM: info.certificatePEM,
             privateKeyPEM: info.privateKeyPEM,
@@ -211,7 +212,7 @@ public final class Signer {
     /// - Note: This method requires C2PAC framework v0.71.0 or later.
     ///
     /// - SeeAlso: ``init(certsPEM:privateKeyPEM:algorithm:tsa:)``
-    public convenience init(settingsJSON: String) throws {
+    public convenience init(settingsJSON: String) throws(C2PAError) {
         try self.init(settings: settingsJSON, format: .json)
     }
 
@@ -251,7 +252,7 @@ public final class Signer {
     /// - Note: This method requires C2PAC framework v0.72.0 or later.
     ///
     /// - SeeAlso: ``init(settingsJSON:)``
-    public convenience init(settingsTOML: String) throws {
+    public convenience init(settingsTOML: String) throws(C2PAError) {
         try self.init(settings: settingsTOML, format: .toml)
     }
 
@@ -262,17 +263,9 @@ public final class Signer {
     ///   - format: The format of the settings string ("json" or "toml").
     ///
     /// - Throws: ``C2PAError`` if the settings are invalid or the signer cannot be created.
-    private convenience init(settings: String, format: SettingsFormat) throws {
-        let raw = try settings.withCString { settingsPtr in
-            try format.rawValue.withCString { formatPtr in
-                let result = c2pa_load_settings(settingsPtr, formatPtr)
-                guard result == 0 else {
-                    throw C2PAError.api(lastC2PAError())
-                }
-                return try guardNotNull(c2pa_signer_from_settings())
-            }
-        }
-        self.init(ptr: raw)
+    private convenience init(settings: String, format: SettingsFormat) throws(C2PAError) {
+        try Self.loadSettings(settings, format: format)
+        self.init(ptr: try guardNotNull(c2pa_signer_from_settings()))
     }
 
     /// Loads global C2PA settings without creating a signer.
@@ -285,14 +278,16 @@ public final class Signer {
     ///   - format: The format of the settings string ("json" or "toml").
     ///
     /// - Throws: ``C2PAError`` if the settings are invalid.
-    public static func loadSettings(_ settings: String, format: SettingsFormat) throws {
-        try settings.withCString { settingsPtr in
-            try format.rawValue.withCString { formatPtr in
-                let result = c2pa_load_settings(settingsPtr, formatPtr)
-                guard result == 0 else {
-                    throw C2PAError.api(lastC2PAError())
-                }
+    public static func loadSettings(_ settings: String, format: SettingsFormat) throws(C2PAError) {
+        // The check sits outside the closures because `String.withCString` erases the type of
+        // an error thrown inside it.
+        let result = settings.withCString { settingsPtr in
+            format.rawValue.withCString { formatPtr in
+                c2pa_load_settings(settingsPtr, formatPtr)
             }
+        }
+        guard result == 0 else {
+            throw C2PAError.api(lastC2PAError())
         }
     }
 
