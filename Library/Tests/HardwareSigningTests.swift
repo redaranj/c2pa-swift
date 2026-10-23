@@ -72,6 +72,7 @@ import FoundationNetworking
     /// a chain issued by the signing server, and a Valid manifest signed with
     /// that chain.
     @Test(.requiresSecureEnclave, .requiresSigningServer) func secureEnclaveCSRSigning() async throws {
+        try await TestEnvironment.requireSigningServer()
         let config = SecureEnclaveSignerConfig(keyTag: Fixtures.uniqueKeyTag("hw.csr"), accessControl: [.privateKeyUsage])
         defer { _ = Signer.deleteSecureEnclaveKey(keyTag: config.keyTag) }
         let publicKey = try #require(SecKeyCopyPublicKey(Signer.createSecureEnclaveKey(config: config)))

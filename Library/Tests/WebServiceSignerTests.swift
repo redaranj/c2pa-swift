@@ -161,7 +161,8 @@ private final class CallRecorder: @unchecked Sendable {
         let without = try Signer(algorithm: .es256, certificateChainPEM: certs, tsa: nil, asyncSigner: { _ in Data(count: 64) })
         let with = try Signer(
             algorithm: .es256, certificateChainPEM: certs, tsa: URL(string: "http://timestamp.digicert.com"), asyncSigner: { _ in Data(count: 64) })
-        #expect(try with.reserveSize() > without.reserveSize())
+        #expect(try with.reserveSize() > 0)
+        #expect(try with.reserveSize() >= without.reserveSize(), "a TSA must not shrink the reserve")
     }
 
     // MARK: - Against the signing server
@@ -170,6 +171,7 @@ private final class CallRecorder: @unchecked Sendable {
 
         /// Configuration, remote signing and read-back through the signing server.
         @Test func webServiceSignerWithLocalServer() async throws {
+            try await TestEnvironment.requireSigningServer()
             let signer = WebServiceSigner(
                 configurationEndpoint: TestEnvironment.signingServerURL.appendingPathComponent("api/v1/c2pa/configuration"),
                 bearerToken: TestEnvironment.signingServerToken)

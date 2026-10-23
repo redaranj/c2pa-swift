@@ -324,7 +324,7 @@ import Testing
         let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
         let embeddable = try builder.signDataHashedEmbeddable(
             signer: Fixtures.signer(),
-            dataHash: #"{"alg": "sha256", "name": "jumbf manifest", "exclusions": []}"#,
+            dataHash: #"{"exclusions": [], "name": "jumbf manifest", "alg": "sha256", "hash": "", "pad": " "}"#,
             format: "image/jpeg",
             asset: Fixtures.stream(Fixtures.pexelsJPEG))
         #expect(embeddable.range(of: jumbfLabel) != nil, "no c2pa manifest store in the embeddable bytes")

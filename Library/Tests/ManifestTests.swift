@@ -503,7 +503,7 @@ import Testing
             title: "test.jpg",
             claimGeneratorInfo: ClaimGeneratorInfo(name: "TestApp", version: "1.0"),
             digitalSourceType: .digitalCapture)
-        _ = try Builder(manifest: manifest)
+        #expect(try Fixtures.signAndRead(Builder(manifest: manifest)).actions() == ["c2pa.created"])
     }
 
     @Test func builderInitManifestInvalid() throws {

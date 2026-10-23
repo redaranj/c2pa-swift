@@ -365,7 +365,7 @@ test-summary:
 		echo "Test results available in TestResults.xcresult"; \
 	else \
 		echo "TestResults.xcresult not found"; \
-		echo "Run 'make test-library' or 'make tests' first to generate test results"; \
+		echo "Run 'make test-library' first to generate test results"; \
 	fi
 
 # Export coverage to LCOV format
