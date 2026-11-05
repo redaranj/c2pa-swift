@@ -74,6 +74,17 @@ jobs:
             platform: macos
             xcode: "26.4.1"
             destination: "platform=macOS"
+          # The oldest iOS the package supports. Xcode 27 runs only iOS 17 and
+          # later simulators, so this leg stays on Xcode 26. The runtime is not
+          # on the runner image and is downloaded first.
+          - name: "iPhone 13"
+            platform: ios
+            device: "iPhone 13"
+            ios: "15.5"
+            ios_build: "19F70"
+            install_runtime: true
+            xcode: "26.4.1"
+            destination: "platform=iOS Simulator,name=iPhone 13,OS=15.5"
 
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +98,18 @@ jobs:
 
       - name: Verify Xcode version
         run: xcodebuild -version
+
+      - name: Install iOS ${{ matrix.ios }} Simulator Runtime
+        if: matrix.install_runtime
+        run: |
+          if xcrun simctl list runtimes | grep -q "iOS ${{ matrix.ios }} "; then
+            echo "iOS ${{ matrix.ios }} runtime already installed"
+            exit 0
+          fi
+          # Try the OS version first, then the runtime's build number.
+          sudo xcodebuild -downloadPlatform iOS -buildVersion "${{ matrix.ios }}" \
+            || sudo xcodebuild -downloadPlatform iOS -buildVersion "${{ matrix.ios_build }}"
+          xcrun simctl list runtimes
 
       - name: Ensure Simulator is Available
         if: matrix.platform == 'ios'
