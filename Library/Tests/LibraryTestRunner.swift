@@ -246,6 +246,21 @@ final class BuilderTests: XCTestCase {
         XCTAssertTrue(result.passed, result.message)
     }
 
+    func testComposeManifest() throws {
+        let result = tests.testComposeManifest()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testComposeManifestRejectsGarbage() throws {
+        let result = tests.testComposeManifestRejectsGarbage()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testDataHashFlowWithCallbackSigner() throws {
+        let result = tests.testDataHashFlowWithCallbackSigner()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
     func testBuilderContextManifestDefinition() throws {
         let result = tests.testBuilderContextManifestDefinition()
         XCTAssertTrue(result.passed, result.message)
@@ -258,21 +273,6 @@ final class BuilderTests: XCTestCase {
 
     func testAddIngredientFromArchive() throws {
         let result = tests.testAddIngredientFromArchive()
-        XCTAssertTrue(result.passed, result.message)
-    }
-
-    func testDataHashedPlaceholder() throws {
-        let result = tests.testDataHashedPlaceholder()
-        XCTAssertTrue(result.passed, result.message)
-    }
-
-    func testFormatEmbeddable() throws {
-        let result = tests.testFormatEmbeddable()
-        XCTAssertTrue(result.passed, result.message)
-    }
-
-    func testSignDataHashedEmbeddable() throws {
-        let result = tests.testSignDataHashedEmbeddable()
         XCTAssertTrue(result.passed, result.message)
     }
 

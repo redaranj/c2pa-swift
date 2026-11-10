@@ -61,12 +61,10 @@ import Foundation
 /// ### Embeddable & Data-Hash Signing
 /// - ``needsPlaceholder(format:)``
 /// - ``placeholder(format:)``
-/// - ``dataHashedPlaceholder(reservedSize:format:)``
 /// - ``setDataHashExclusions(_:)``
 /// - ``updateHashFromStream(format:stream:)``
 /// - ``signEmbeddable(format:)``
-/// - ``signDataHashedEmbeddable(signer:dataHash:format:asset:)``
-/// - ``formatEmbeddable(_:format:)``
+/// - ``composeManifest(_:format:)``
 ///
 /// ### Fragmented (BMFF) Hashing
 /// - ``setFixedSizeMerkle(_:)``
@@ -518,26 +516,6 @@ public final class Builder {
         return manifestData(length: len, pointer: out)
     }
 
-    /// Generates a data-hash placeholder manifest with a caller-specified reserved size.
-    ///
-    /// Use this variant when you need to pre-reserve a fixed-size slot in the asset
-    /// before you know the exact placeholder content. The `reservedSize` must be at
-    /// least as large as the final signed manifest.
-    ///
-    /// - Parameters:
-    ///   - reservedSize: The number of bytes to reserve in the asset for the manifest.
-    ///   - format: The MIME type of the target asset (e.g. `"image/jpeg"`).
-    ///
-    /// - Returns: The placeholder manifest bytes as `Data`.
-    ///
-    /// - Throws: ``C2PAError`` if placeholder generation fails.
-    public func dataHashedPlaceholder(reservedSize: Int, format: String) throws -> Data {
-        var out: UnsafePointer<UInt8>?
-        let len = try guardNonNegative(
-            c2pa_builder_data_hashed_placeholder(ptr, UInt(reservedSize), format, &out))
-        return manifestData(length: len, pointer: out)
-    }
-
     /// Registers the byte ranges that must be excluded from the data hash.
     ///
     /// Call this after embedding the placeholder into the asset to tell the hasher
@@ -587,8 +565,9 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if signing fails.
     ///
-    /// - Note: This method requires the builder to have been configured with a signer
-    ///   via a ``C2PAContext`` — the context must carry the signing credentials.
+    /// - Note: This signs with the signer on the builder's ``C2PAContext``: one passed to
+    ///   ``C2PAContext/init(settings:signer:onProgress:httpResolver:)``, or one configured
+    ///   in its settings.
     @discardableResult
     public func signEmbeddable(format: String) throws -> Data {
         var out: UnsafePointer<UInt8>?
@@ -596,36 +575,12 @@ public final class Builder {
         return manifestData(length: len, pointer: out)
     }
 
-    /// Signs the manifest using a data hash and returns the composed embeddable bytes.
-    ///
-    /// This is the low-level data-hash signing path: the caller provides a pre-computed
-    /// `dataHash` JSON string and the original asset stream. The returned bytes are
-    /// suitable for direct embedding into the asset.
-    ///
-    /// - Parameters:
-    ///   - signer: The ``Signer`` instance providing the signing credentials.
-    ///   - dataHash: A JSON string containing `DataHash` information for the asset.
-    ///   - format: The MIME type of the asset (e.g. `"image/jpeg"`).
-    ///   - asset: A ``Stream`` containing the asset to be signed.
-    ///
-    /// - Returns: The signed embeddable manifest bytes as `Data`.
-    ///
-    /// - Throws: ``C2PAError`` if signing fails.
-    @discardableResult
-    public func signDataHashedEmbeddable(
-        signer: Signer, dataHash: String, format: String, asset: Stream
-    ) throws -> Data {
-        var out: UnsafePointer<UInt8>?
-        let len = try guardNonNegative(c2pa_builder_sign_data_hashed_embeddable(
-            ptr, try signer.livePtr(), dataHash, format, asset.rawPtr, &out))
-        return manifestData(length: len, pointer: out)
-    }
-
-    /// Converts a raw C2PA manifest into an embeddable version for the given format.
+    /// Composes a raw C2PA manifest into an embeddable version for the given format.
     ///
     /// A raw manifest (in `application/c2pa` format) can be stored in the cloud but
-    /// cannot be embedded directly into an asset without format-specific framing.
-    /// This static method wraps the manifest bytes in the correct container for embedding.
+    /// cannot be embedded directly into an asset without format-specific framing. This
+    /// wraps the manifest bytes in the correct container for embedding, consulting any
+    /// custom asset handlers registered on this builder's context.
     ///
     /// - Parameters:
     ///   - manifest: The raw C2PA manifest bytes.
@@ -633,12 +588,12 @@ public final class Builder {
     ///
     /// - Returns: The format-wrapped embeddable manifest bytes as `Data`.
     ///
-    /// - Throws: ``C2PAError`` if the conversion fails.
-    public static func formatEmbeddable(_ manifest: Data, format: String) throws -> Data {
+    /// - Throws: ``C2PAError`` if composition fails.
+    public func composeManifest(_ manifest: Data, format: String) throws -> Data {
         var out: UnsafePointer<UInt8>?
         let len = try manifest.withUnsafeBytes { buf -> Int64 in
-            try guardNonNegative(c2pa_format_embeddable(
-                format, buf.bindMemory(to: UInt8.self).baseAddress, UInt(manifest.count), &out))
+            try guardNonNegative(c2pa_builder_compose_manifest(
+                ptr, format, buf.bindMemory(to: UInt8.self).baseAddress, UInt(manifest.count), &out))
         }
         return manifestData(length: len, pointer: out)
     }
