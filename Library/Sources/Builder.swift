@@ -98,16 +98,10 @@ public final class Builder {
 
     // The native builder keeps a clone of the context alive, so the Swift wrapper
     // must live at least as long or state it owns for the native layer dangles.
-    private let context: C2PAContext?
-
-    /// Internal initializer that skips validation.
-    private init(validatedJSON: String) throws {
-        ptr = try guardNotNull(c2pa_builder_from_json(validatedJSON))
-        context = nil
-    }
+    private let context: C2PAContext
 
     /// Internal initializer that adopts an already-configured native builder.
-    private init(adopting ptr: UnsafeMutablePointer<C2paBuilder>, context: C2PAContext?) {
+    private init(adopting ptr: UnsafeMutablePointer<C2paBuilder>, context: C2PAContext) {
         self.ptr = ptr
         self.context = context
     }
@@ -122,7 +116,7 @@ public final class Builder {
         }
     }
 
-    /// Creates a new builder from a ``ManifestDefinition``.
+    /// Creates a new builder from a ``ManifestDefinition``, using a default context.
     ///
     /// Validates the manifest before construction. Errors cause a throw;
     /// warnings are logged via `NSLog`.
@@ -133,10 +127,10 @@ public final class Builder {
     ///   or ``C2PAError`` if the JSON cannot be parsed by the C layer.
     public convenience init(manifest: ManifestDefinition) throws {
         try Self.enforce(ManifestValidator.validate(manifest))
-        try self.init(validatedJSON: manifest.toJSON())
+        try self.init(context: C2PAContext(), manifestJSON: manifest.toJSON())
     }
 
-    /// Creates a new builder from a manifest JSON definition.
+    /// Creates a new builder from a manifest JSON definition, using a default context.
     ///
     /// This is a low-level initializer that passes the JSON directly to the C layer.
     /// Use ``init(manifest:)`` for automatic validation before construction.
@@ -145,7 +139,7 @@ public final class Builder {
     ///
     /// - Throws: ``C2PAError`` if the JSON is invalid or cannot be parsed.
     public convenience init(manifestJSON: String) throws {
-        try self.init(validatedJSON: manifestJSON)
+        try self.init(context: C2PAContext(), manifestJSON: manifestJSON)
     }
 
     /// Creates a new builder from a ``C2PAContext`` and a previously created C2PA archive stream.
