@@ -509,12 +509,6 @@ public final class BuilderTests: TestImplementation {
         }
     }
 
-    private func jsonQuoted(_ s: String) -> String {
-        let arr = (try? JSONSerialization.data(withJSONObject: [s]))
-            .flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
-        return String(arr.dropFirst().dropLast())  // strip the [ ] to get the quoted string
-    }
-
     public func testNeedsPlaceholder() -> TestResult {
         do {
             let context = try C2PAContext()
@@ -538,7 +532,7 @@ public final class BuilderTests: TestImplementation {
             }
             try imageData.write(to: assetURL)
 
-            let settingsJSON = "{\"version\":1,\"signer\":{\"local\":{\"alg\":\"es256\",\"sign_cert\":\(jsonQuoted(TestUtilities.testCertsPEM)),\"private_key\":\(jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
+            let settingsJSON = "{\"version\":1,\"signer\":{\"local\":{\"alg\":\"es256\",\"sign_cert\":\(TestUtilities.jsonQuoted(TestUtilities.testCertsPEM)),\"private_key\":\(TestUtilities.jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
             let settings = try C2PASettings(json: settingsJSON)
             let context = try C2PAContext(settings: settings)
             let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
@@ -711,8 +705,8 @@ public final class BuilderTests: TestImplementation {
             }
             let settingsJSON = "{\"version\":1,\"builder\":{\"created_assertion_labels\":[\"c2pa.actions\"]},"
                 + "\"signer\":{\"local\":{\"alg\":\"es256\","
-                + "\"sign_cert\":\(jsonQuoted(TestUtilities.testCertsPEM)),"
-                + "\"private_key\":\(jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
+                + "\"sign_cert\":\(TestUtilities.jsonQuoted(TestUtilities.testCertsPEM)),"
+                + "\"private_key\":\(TestUtilities.jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
             let context = try C2PAContext(settings: try C2PASettings(json: settingsJSON))
             let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
 

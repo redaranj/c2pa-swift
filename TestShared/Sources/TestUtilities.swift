@@ -9,6 +9,7 @@
 // each license.
 
 import C2PA
+import CryptoKit
 import Foundation
 
 // Helper class for bundle resolution
@@ -83,6 +84,13 @@ public enum TestUtilities {
         """
     }
 
+    // Quotes and escapes a string as a JSON string literal
+    public static func jsonQuoted(_ s: String) -> String {
+        let arr = (try? JSONSerialization.data(withJSONObject: [s]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        return String(arr.dropFirst().dropLast())  // strip the [ ] to get the quoted string
+    }
+
     // Creates a test signer with valid credentials for actual signing
     public static func createTestSigner() throws -> Signer {
         return try Signer(
@@ -91,6 +99,18 @@ public enum TestUtilities {
             algorithm: .es256,
             tsa: nil
         )
+    }
+
+    // Creates a callback signer that produces valid ES256 signatures with the test key,
+    // calling onSign with the bytes to be signed first
+    public static func createTestCallbackSigner(
+        onSign: @escaping @Sendable (Data) -> Void = { _ in }
+    ) throws -> Signer {
+        let key = try P256.Signing.PrivateKey(pemRepresentation: testPrivateKeyPEM)
+        return try Signer(algorithm: .es256, certificateChainPEM: testCertsPEM) { data in
+            onSign(data)
+            return try key.signature(for: data).derRepresentation
+        }
     }
 
     // Creates a test signer with invalid credentials for testing failures

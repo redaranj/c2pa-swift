@@ -55,6 +55,7 @@ import Foundation
 ///
 /// ### Signing and Output
 /// - ``sign(format:source:destination:signer:)``
+/// - ``sign(format:source:destination:)``
 /// - ``writeArchive(to:)``
 ///
 /// ### Embeddable & Data-Hash Signing
@@ -437,6 +438,47 @@ public final class Builder {
                 source.rawPtr,
                 destination.rawPtr,
                 try signer.livePtr(),
+                &manifestPtr)
+        )
+        return manifestData(length: size, pointer: manifestPtr)
+    }
+
+    /// Signs the manifest with the signer on this builder's context and embeds it.
+    ///
+    /// The signer comes from the ``C2PAContext`` the builder was created from: either one
+    /// passed to ``C2PAContext/init(settings:signer:onProgress:httpResolver:)``, or one
+    /// configured in its settings. When both are present, the one passed in wins.
+    ///
+    /// - Parameters:
+    ///   - format: The MIME type of the asset being signed (e.g., "image/jpeg").
+    ///   - source: A ``Stream`` containing the source asset.
+    ///   - destination: A ``Stream`` for the signed asset.
+    ///
+    /// - Returns: The signed manifest bytes.
+    ///
+    /// - Throws: ``C2PAError`` if the context has no signer, or if signing fails.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let context = try C2PAContext(signer: try Signer(info: signerInfo))
+    /// let builder = try Builder(context: context, manifestJSON: manifestJSON)
+    ///
+    /// try builder.sign(
+    ///     format: "image/jpeg",
+    ///     source: try Stream(readFrom: sourceURL),
+    ///     destination: try Stream(writeTo: destURL)
+    /// )
+    /// ```
+    @discardableResult
+    public func sign(format: String, source: Stream, destination: Stream) throws -> Data {
+        var manifestPtr: UnsafePointer<UInt8>?
+        let size = try guardNonNegative(
+            c2pa_builder_sign_context(
+                ptr,
+                format,
+                source.rawPtr,
+                destination.rawPtr,
                 &manifestPtr)
         )
         return manifestData(length: size, pointer: manifestPtr)

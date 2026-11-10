@@ -1170,6 +1170,51 @@ final class ContextTests: XCTestCase {
         XCTAssertTrue(result.passed, result.message)
     }
 
+    func testContextSignerSigns() throws {
+        let result = tests.testContextSignerSigns()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testContextWithoutSignerSignFails() throws {
+        let result = tests.testContextWithoutSignerSignFails()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testProgrammaticSignerOverridesSettingsSigner() throws {
+        let result = tests.testProgrammaticSignerOverridesSettingsSigner()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testSignerReuseAfterContextThrows() throws {
+        let result = tests.testSignerReuseAfterContextThrows()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testContextRejectsConsumedSigner() throws {
+        let result = tests.testContextRejectsConsumedSigner()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testContextReleasesCallbackSigner() throws {
+        let result = tests.testContextReleasesCallbackSigner()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testContextSignerOutlivesCallerScope() throws {
+        let result = tests.testContextSignerOutlivesCallerScope()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testConcurrentSignsShareContextSigner() throws {
+        let result = tests.testConcurrentSignsShareContextSigner()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testContextSignerCallbackErrorPropagates() throws {
+        let result = tests.testContextSignerCallbackErrorPropagates()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
     func testContextWithSettingsAndCallbacks() throws {
         let result = tests.testContextWithSettingsAndCallbacks()
         XCTAssertTrue(result.passed, result.message)

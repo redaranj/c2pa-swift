@@ -77,8 +77,9 @@ public final class Signer {
 
     let ptr: UnsafeMutablePointer<C2paSigner>
     private var retainedContext: Unmanaged<AnyObject>?
-    /// When true, the native signer was consumed by ``withCawgIdentity(_:identity:referencedAssertions:roles:)``
-    /// and must not be freed by this instance.
+    /// When true, the native signer was consumed by a ``C2PAContext`` or by
+    /// ``withCawgIdentity(_:identity:referencedAssertions:roles:)`` and must not be freed by
+    /// this instance.
     private var consumed = false
     /// Input signers consumed into this combined signer; held so their callback contexts
     /// outlive this signer and are released only after this signer is freed.
@@ -87,16 +88,28 @@ public final class Signer {
     /// The native signer, validated as still owned by this instance.
     ///
     /// Use this instead of ``ptr`` wherever the pointer is handed to the C layer, so a
-    /// signer consumed by ``withCawgIdentity(_:identity:referencedAssertions:roles:)``
-    /// fails with a clear error rather than dereferencing memory it no longer owns.
+    /// consumed signer fails with a clear error rather than dereferencing memory it no
+    /// longer owns.
     ///
     /// - Throws: ``C2PAError`` if this signer was consumed.
     func livePtr() throws -> UnsafeMutablePointer<C2paSigner> {
         guard !consumed else {
             throw C2PAError.api(
-                "Signer was consumed by withCawgIdentity(_:identity:referencedAssertions:roles:) and cannot be reused")
+                "Signer was consumed by another owner (a C2PAContext or withCawgIdentity) and cannot be reused")
         }
         return ptr
+    }
+
+    /// Hands the native signer to a new owner and marks this instance consumed.
+    ///
+    /// Call this immediately before the native call that takes ownership. From then on
+    /// this instance no longer frees the signer, and every later use throws.
+    ///
+    /// - Throws: ``C2PAError`` if this signer was already consumed.
+    func consume() throws -> UnsafeMutablePointer<C2paSigner> {
+        let live = try livePtr()
+        consumed = true
+        return live
     }
 
     private init(ptr: UnsafeMutablePointer<C2paSigner>) {

@@ -219,11 +219,16 @@ private let httpResolverTrampoline: C2paHttpResolverCallback = { context, reques
 /// create one or more ``Builder`` instances that share it. Once created, a
 /// context is immutable.
 ///
+/// A context can also carry a ``Signer``, either one configured in its settings or
+/// one passed to ``init(settings:signer:onProgress:httpResolver:)``. Builders created
+/// from it sign with that signer through ``Builder/sign(format:source:destination:)``
+/// and ``Builder/signEmbeddable(format:)``.
+///
 /// ## Topics
 ///
 /// ### Creating a Context
-/// - ``init(settings:onProgress:httpResolver:)``
-/// - ``init(settings:onProgress:urlSession:)``
+/// - ``init(settings:signer:onProgress:httpResolver:)``
+/// - ``init(settings:signer:onProgress:urlSession:)``
 ///
 /// ### Controlling Operations
 /// - ``cancel()``
@@ -256,10 +261,23 @@ public final class C2PAContext: @unchecked Sendable {
     /// context. Holding them here ties their lifetime to it exactly.
     private let callbackBoxes: [any Sendable]
 
+    /// The signer the native context took ownership of, if one was passed in.
+    ///
+    /// Never touched after init. It is held only so that a callback signer's closure box,
+    /// which the native signer points at without retaining, lives as long as the context.
+    /// That is also why holding a non-`Sendable` value here leaves the conformance sound:
+    /// nothing reads it, and the closure it keeps alive is `@Sendable`.
+    private let ownedSigner: Signer?
+
     /// Internal initializer that adopts an already-built native context.
-    init(ptr: UnsafeMutablePointer<C2paContext>, callbackBoxes: [any Sendable] = []) {
+    init(
+        ptr: UnsafeMutablePointer<C2paContext>,
+        callbackBoxes: [any Sendable] = [],
+        ownedSigner: Signer? = nil
+    ) {
         self.ptr = ptr
         self.callbackBoxes = callbackBoxes
+        self.ownedSigner = ownedSigner
     }
 
     /// Creates a context, optionally configured with settings and callbacks.
@@ -270,6 +288,10 @@ public final class C2PAContext: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - settings: The ``C2PASettings`` to configure this context with.
+    ///   - signer: A ``Signer`` for builders created from this context to sign with. The
+    ///     context takes ownership of it, so it cannot be used again afterwards, not even
+    ///     after this initializer throws. It takes priority over a signer configured in
+    ///     `settings`.
     ///   - onProgress: Observes operation progress and decides whether it continues.
     ///     Called synchronously at checkpoints, on whichever thread runs the operation.
     ///     Return ``ProgressDisposition/cancel`` to stop just this operation, or use
@@ -279,7 +301,8 @@ public final class C2PAContext: @unchecked Sendable {
     ///     thread-safe; the `@Sendable` requirement enforces that under strict
     ///     concurrency checking. Throwing fails the request.
     ///
-    /// - Throws: ``C2PAError`` if the context cannot be created.
+    /// - Throws: ``C2PAError`` if the context cannot be created, or if `signer` was
+    ///   already consumed by another owner.
     ///
     /// ## Example
     ///
@@ -291,10 +314,11 @@ public final class C2PAContext: @unchecked Sendable {
     /// ```
     public convenience init(
         settings: C2PASettings? = nil,
+        signer: sending Signer? = nil,
         onProgress: (@Sendable (ProgressUpdate) -> ProgressDisposition)? = nil,
         httpResolver: (@Sendable (HTTPRequest) throws -> HTTPResponse)? = nil
     ) throws {
-        guard settings != nil || onProgress != nil || httpResolver != nil else {
+        guard settings != nil || signer != nil || onProgress != nil || httpResolver != nil else {
             self.init(ptr: try guardNotNull(c2pa_context_new()))
             return
         }
@@ -332,6 +356,15 @@ public final class C2PAContext: @unchecked Sendable {
                     throw error
                 }
             }
+
+            // Last, so that a failure configuring anything above leaves the signer
+            // unconsumed and freed as usual. The native call untracks the signer before
+            // anything in it can fail, so it is marked consumed first: a failure past that
+            // point leaks the signer rather than risking a double free.
+            if let signer {
+                _ = try guardNonNegative(
+                    Int64(c2pa_context_builder_set_signer(builder, try signer.consume())))
+            }
         } catch {
             _ = c2pa_free(builder)
             throw error
@@ -339,7 +372,9 @@ public final class C2PAContext: @unchecked Sendable {
 
         // c2pa_context_builder_build consumes the builder, even on failure.
         self.init(
-            ptr: try guardNotNull(c2pa_context_builder_build(builder)), callbackBoxes: boxes)
+            ptr: try guardNotNull(c2pa_context_builder_build(builder)),
+            callbackBoxes: boxes,
+            ownedSigner: signer)
     }
 
     /// Creates a context whose HTTP requests are resolved by a `URLSession`.
@@ -359,17 +394,20 @@ public final class C2PAContext: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - settings: The ``C2PASettings`` to configure this context with.
-    ///   - onProgress: Observes operation progress. See ``init(settings:onProgress:httpResolver:)``.
+    ///   - signer: A ``Signer`` the context takes ownership of. See
+    ///     ``init(settings:signer:onProgress:httpResolver:)``.
+    ///   - onProgress: Observes operation progress. See ``init(settings:signer:onProgress:httpResolver:)``.
     ///   - urlSession: The session used to perform each request. Must not deliver its
     ///     callbacks on the main queue, and must stay valid for as long as this context
     ///     does: an invalidated session hands back tasks whose completion handler never
     ///     runs, which would block a resolving thread indefinitely. Request timeouts are
     ///     taken from the session's own configuration; nothing is imposed on top.
     ///
-    /// - Throws: ``C2PAError`` if `urlSession` delivers on the main queue, or if the context
-    ///   cannot be created.
+    /// - Throws: ``C2PAError`` if `urlSession` delivers on the main queue, if `signer` was
+    ///   already consumed by another owner, or if the context cannot be created.
     public convenience init(
         settings: C2PASettings? = nil,
+        signer: sending Signer? = nil,
         onProgress: (@Sendable (ProgressUpdate) -> ProgressDisposition)? = nil,
         urlSession: URLSession
     ) throws {
@@ -379,6 +417,7 @@ public final class C2PAContext: @unchecked Sendable {
         }
         try self.init(
             settings: settings,
+            signer: signer,
             onProgress: onProgress,
             httpResolver: { request in
                 var urlRequest = URLRequest(url: request.url)
@@ -437,7 +476,7 @@ public final class C2PAContext: @unchecked Sendable {
     /// Give an operation its own context when it has to be cancellable on its own.
     ///
     /// To stop a single operation instead, return ``ProgressDisposition/cancel`` from the
-    /// progress observer passed to ``init(settings:onProgress:httpResolver:)``.
+    /// progress observer passed to ``init(settings:signer:onProgress:httpResolver:)``.
     ///
     /// - Throws: ``C2PAError`` if the cancellation request fails.
     public func cancel() throws {
