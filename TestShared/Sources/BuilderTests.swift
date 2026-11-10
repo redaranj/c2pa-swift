@@ -583,15 +583,18 @@ public final class BuilderTests: TestImplementation {
         }
     }
 
-    public func testComposeManifestRejectsGarbage() -> TestResult {
-        let name = "Compose Manifest Rejects Garbage"
+    public func testComposeManifestRejectsUnsupportedFormat() -> TestResult {
+        let name = "Compose Manifest Rejects Unsupported Format"
         do {
             let builder = try Builder(manifestJSON: TestUtilities.createTestManifestJSON())
+            // Composing frames the bytes for the format without validating them, so the
+            // failure it can report is a format with no asset handler.
             do {
-                _ = try builder.composeManifest(Data([0x00, 0x01, 0x02, 0x03]), format: "image/jpeg")
-                return .failure(name, "composed bytes that are not a manifest")
+                _ = try builder.composeManifest(
+                    Data([0x00, 0x01, 0x02, 0x03]), format: "application/x-unsupported")
+                return .failure(name, "composed a manifest for a format with no handler")
             } catch is C2PAError {
-                return .success(name, "[PASS] bytes that are not a manifest were rejected")
+                return .success(name, "[PASS] a format with no handler was rejected")
             }
         } catch {
             return .failure(name, "Error: \(error)")
@@ -794,7 +797,7 @@ public final class BuilderTests: TestImplementation {
             testNeedsPlaceholder(),
             testDataHashSigningWorkflow(),
             testComposeManifest(),
-            testComposeManifestRejectsGarbage(),
+            testComposeManifestRejectsUnsupportedFormat(),
             testDataHashFlowWithCallbackSigner(),
             testBuilderContextManifestDefinition(),
             testBuilderAddAction(),

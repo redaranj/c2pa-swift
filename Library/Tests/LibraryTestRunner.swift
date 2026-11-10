@@ -251,8 +251,8 @@ final class BuilderTests: XCTestCase {
         XCTAssertTrue(result.passed, result.message)
     }
 
-    func testComposeManifestRejectsGarbage() throws {
-        let result = tests.testComposeManifestRejectsGarbage()
+    func testComposeManifestRejectsUnsupportedFormat() throws {
+        let result = tests.testComposeManifestRejectsUnsupportedFormat()
         XCTAssertTrue(result.passed, result.message)
     }
 
