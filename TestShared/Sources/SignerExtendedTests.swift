@@ -376,8 +376,10 @@ public final class SignerExtendedTests: TestImplementation {
     public func testSignerCallbackInvocation() -> TestResult {
         // This test verifies the callback signer actually invokes the callback during signing
         var testSteps: [String] = []
-        var callbackInvoked = false
-        var receivedDataSize = 0
+        // Written by the signer closure, which runs to completion before `sign` returns,
+        // so every read below comes after the write.
+        nonisolated(unsafe) var callbackInvoked = false
+        nonisolated(unsafe) var receivedDataSize = 0
 
         do {
             let signer = try Signer(
@@ -458,7 +460,9 @@ public final class SignerExtendedTests: TestImplementation {
     public func testSignerCallbackErrorPropagation() -> TestResult {
         // This test verifies that errors thrown by the callback are properly propagated
         var testSteps: [String] = []
-        var callbackInvoked = false
+        // Written by the signer closure, which runs to completion before `sign` returns,
+        // so every read below comes after the write.
+        nonisolated(unsafe) var callbackInvoked = false
 
         do {
             let signer = try Signer(
@@ -520,7 +524,7 @@ public final class SignerExtendedTests: TestImplementation {
     }
 
     public func testFailedSignerCreationReleasesCallback() -> TestResult {
-        final class Captured {}
+        final class Captured: Sendable {}
 
         weak var weakCaptured: Captured?
         var creationError: Error?

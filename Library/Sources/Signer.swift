@@ -307,7 +307,9 @@ public final class Signer {
     /// - Keychain-stored keys
     ///
     /// The signing closure receives the data to be signed and must return the
-    /// signature bytes. The closure is called during the signing operation.
+    /// signature bytes. The closure is called during the signing operation, on
+    /// whichever thread runs it. When the signer is owned by a ``C2PAContext`` that
+    /// several threads share, it can be called concurrently.
     ///
     /// - Parameters:
     ///   - algorithm: The signing algorithm that matches your closure's implementation.
@@ -340,12 +342,12 @@ public final class Signer {
         algorithm: SigningAlgorithm,
         certificateChainPEM: String,
         tsa: URL? = nil,
-        sign: @escaping (Data) throws -> Data
+        sign: @escaping @Sendable (Data) throws -> Data
     ) throws {
         // keep closure alive
         final class Box {
-            let fn: (Data) throws -> Data
-            init(_ fn: @escaping (Data) throws -> Data) { self.fn = fn }
+            let fn: @Sendable (Data) throws -> Data
+            init(_ fn: @escaping @Sendable (Data) throws -> Data) { self.fn = fn }
         }
         let box = Box(sign)
         let ref = Unmanaged.passRetained(box as AnyObject)  // Retain Box as AnyObject

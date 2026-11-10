@@ -41,10 +41,12 @@ public final class SigningTests: TestImplementation {
     public func testSignerWithCallback() -> TestResult {
         // This test verifies that the callback mechanism works
         // It's not testing actual signing validity
-        var callbackInvoked = false
-        var dataToSign: Data?
+        // Written by the signer closure, which runs to completion before `sign` returns,
+        // so every read below comes after the write.
+        nonisolated(unsafe) var callbackInvoked = false
+        nonisolated(unsafe) var dataToSign: Data?
 
-        let signCallback: (Data) throws -> Data = { data in
+        let signCallback: @Sendable (Data) throws -> Data = { data in
             callbackInvoked = true
             dataToSign = data
 
