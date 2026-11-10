@@ -63,7 +63,7 @@ extension Signer {
         tsa: URL? = nil,
         keychainKeyTag: String
     ) throws {
-        guard let secAlgorithm = algorithm.secKeyAlgo else {
+        guard algorithm.secKeyAlgo != nil else {
             throw C2PAError.ed25519NotSupported
         }
 
@@ -72,6 +72,11 @@ extension Signer {
             certificateChainPEM: certificateChainPEM,
             tsa: tsa
         ) { data in
+            // Looked up again here so the @Sendable closure captures only the Sendable
+            // algorithm, not a SecKeyAlgorithm whose Sendable conformance varies by SDK.
+            guard let secAlgorithm = algorithm.secKeyAlgo else {
+                throw C2PAError.ed25519NotSupported
+            }
             let query: [String: Any] = [
                 kSecClass as String: kSecClassKey,
                 kSecAttrApplicationTag as String: keychainKeyTag,
