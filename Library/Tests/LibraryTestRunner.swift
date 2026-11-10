@@ -413,13 +413,13 @@ final class SigningTests: XCTestCase {
         XCTAssertTrue(result.passed, result.message)
     }
 
-    func testSignerFromSettingsTOML() throws {
-        let result = tests.testSignerFromSettingsTOML()
+    func testSettingsSignerSignsThroughContextTOML() throws {
+        let result = tests.testSettingsSignerSignsThroughContextTOML()
         XCTAssertTrue(result.passed, result.message)
     }
 
-    func testSignerFromSettingsJSON() throws {
-        let result = tests.testSignerFromSettingsJSON()
+    func testSettingsSignerSignsThroughContextJSON() throws {
+        let result = tests.testSettingsSignerSignsThroughContextJSON()
         XCTAssertTrue(result.passed, result.message)
     }
 
@@ -915,21 +915,6 @@ final class SignerExtendedTests: XCTestCase {
 
     func testExportPublicKeyPEMNonExistentKey() throws {
         let result = tests.testExportPublicKeyPEMNonExistentKey()
-        XCTAssertTrue(result.passed, result.message)
-    }
-
-    func testLoadSettingsJSON() throws {
-        let result = tests.testLoadSettingsJSON()
-        XCTAssertTrue(result.passed, result.message)
-    }
-
-    func testLoadSettingsTOML() throws {
-        let result = tests.testLoadSettingsTOML()
-        XCTAssertTrue(result.passed, result.message)
-    }
-
-    func testLoadSettingsInvalidJSON() throws {
-        let result = tests.testLoadSettingsInvalidJSON()
         XCTAssertTrue(result.passed, result.message)
     }
 

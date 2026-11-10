@@ -19,7 +19,7 @@ private enum SmuggledSigner {
     nonisolated(unsafe) static var identity: Signer?
 }
 
-// Extended Signer tests - covering reserveSize, exportPublicKeyPEM, loadSettings, etc.
+// Extended Signer tests - covering reserveSize, exportPublicKeyPEM, callbacks, etc.
 public final class SignerExtendedTests: TestImplementation {
 
     public init() {}
@@ -232,80 +232,6 @@ public final class SignerExtendedTests: TestImplementation {
             return .success(
                 "exportPublicKeyPEM Non-existent Key",
                 testSteps.joined(separator: "\n"))
-        }
-    }
-
-    // MARK: - loadSettings Tests
-
-    public func testLoadSettingsJSON() -> TestResult {
-        var testSteps: [String] = []
-
-        // Create a valid JSON settings string
-        let settingsJSON = """
-        {
-            "version": 1,
-            "claim_generator_info": {
-                "name": "test_app",
-                "version": "1.0"
-            }
-        }
-        """
-
-        do {
-            try Signer.loadSettings(settingsJSON, format: .json)
-            testSteps.append("Loaded JSON settings successfully")
-
-            return .success(
-                "loadSettings JSON",
-                testSteps.joined(separator: "\n"))
-
-        } catch {
-            // loadSettings might fail for minimal settings, but we're testing the code path
-            testSteps.append("loadSettings result: \(error)")
-            return .success(
-                "loadSettings JSON",
-                testSteps.joined(separator: "\n"))
-        }
-    }
-
-    public func testLoadSettingsTOML() -> TestResult {
-        var testSteps: [String] = []
-
-        let settingsTOML = """
-        version = 1
-
-        [claim_generator_info]
-        name = "test_app"
-        version = "1.0"
-        """
-
-        do {
-            try Signer.loadSettings(settingsTOML, format: .toml)
-            testSteps.append("Loaded TOML settings successfully")
-
-            return .success(
-                "loadSettings TOML",
-                testSteps.joined(separator: "\n"))
-
-        } catch {
-            testSteps.append("loadSettings result: \(error)")
-            return .success(
-                "loadSettings TOML",
-                testSteps.joined(separator: "\n"))
-        }
-    }
-
-    public func testLoadSettingsInvalidJSON() -> TestResult {
-        do {
-            try Signer.loadSettings("{ invalid json }", format: .json)
-            // v0.76.1+ accepts invalid JSON without error
-            return .success(
-                "loadSettings Invalid JSON",
-                "loadSettings accepted invalid JSON without error (expected in v0.76.1+)")
-        } catch {
-            return .success(
-                "loadSettings Invalid JSON",
-                "Caught error for invalid JSON: \(error)")
         }
     }
 
@@ -704,9 +630,6 @@ public final class SignerExtendedTests: TestImplementation {
         results.append(testReserveSizeWithCallback())
         results.append(testExportPublicKeyPEM())
         results.append(testExportPublicKeyPEMNonExistentKey())
-        results.append(testLoadSettingsJSON())
-        results.append(testLoadSettingsTOML())
-        results.append(testLoadSettingsInvalidJSON())
         results.append(testSignerFromSignerInfo())
         results.append(testSignerFromSignerInfoWithTSA())
         results.append(testSignerCallbackInvocation())

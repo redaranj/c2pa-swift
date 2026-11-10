@@ -342,25 +342,25 @@ public final class SigningTests: TestImplementation {
         }
     }
 
-    public func testSignerFromSettingsTOML() -> TestResult {
+    public func testSettingsSignerSignsThroughContextTOML() -> TestResult {
         let bundle = Bundle(for: type(of: self))
 
         guard let tomlURL = bundle.url(forResource: "test_settings_with_cawg_signing", withExtension: "toml") else {
-            return .failure("Signer From Settings (TOML)", "Fixture not found: test_settings_with_cawg_signing.toml")
+            return .failure("Settings Signer Through Context (TOML)", "Fixture not found: test_settings_with_cawg_signing.toml")
         }
 
         do {
-            let settingsTOML = try String(contentsOf: tomlURL, encoding: .utf8)
-            let signer = try Signer(settingsTOML: settingsTOML)
+            let settings = try C2PASettings(toml: try String(contentsOf: tomlURL, encoding: .utf8))
+            let context = try C2PAContext(settings: settings)
 
             // Load test image
             guard let sourceData = TestUtilities.loadPexelsTestImage() else {
-                return .failure("Signer From Settings (TOML)", "Could not load test image")
+                return .failure("Settings Signer Through Context (TOML)", "Could not load test image")
             }
 
             // Create manifest
             let manifestJSON = TestUtilities.createTestManifestJSON()
-            let builder = try Builder(manifestJSON: manifestJSON)
+            let builder = try Builder(context: context, manifestJSON: manifestJSON)
 
             let tempDir = FileManager.default.temporaryDirectory
             let sourceFile = tempDir.appendingPathComponent("settings_toml_source_\(UUID().uuidString).jpg")
@@ -379,8 +379,7 @@ public final class SigningTests: TestImplementation {
             _ = try builder.sign(
                 format: "image/jpeg",
                 source: sourceStream,
-                destination: destStream,
-                signer: signer
+                destination: destStream
             )
 
             // Verify the signed image contains a valid manifest
@@ -392,7 +391,7 @@ public final class SigningTests: TestImplementation {
             guard let manifestData = manifestJSONResult.data(using: .utf8),
                 (try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any]) != nil
             else {
-                return .failure("Signer From Settings (TOML)", "Could not parse manifest JSON")
+                return .failure("Settings Signer Through Context (TOML)", "Could not parse manifest JSON")
             }
 
             // Successfully signed and verified manifest
@@ -402,7 +401,7 @@ public final class SigningTests: TestImplementation {
                   let firstManifest = manifests.values.first as? [String: Any],
                   let assertions = firstManifest["assertions"] as? [[String: Any]] else {
                 return .success(
-                    "Signer From Settings (TOML)",
+                    "Settings Signer Through Context (TOML)",
                     "[PASS] Signed image with CAWG settings - manifest valid but no assertions to inspect")
             }
 
@@ -414,40 +413,40 @@ public final class SigningTests: TestImplementation {
 
             if hasCawgAssertion {
                 return .success(
-                    "Signer From Settings (TOML)",
+                    "Settings Signer Through Context (TOML)",
                     "[PASS] Signed image with CAWG signer - found CAWG assertions: \(assertionLabels)")
             } else {
                 return .success(
-                    "Signer From Settings (TOML)",
+                    "Settings Signer Through Context (TOML)",
                     "[PASS] Signed image with CAWG settings - assertions: \(assertionLabels)")
             }
 
         } catch let error as C2PAError {
-            return .failure("Signer From Settings (TOML)", "Failed - \(error)")
+            return .failure("Settings Signer Through Context (TOML)", "Failed - \(error)")
         } catch {
-            return .failure("Signer From Settings (TOML)", "Failed - \(error)")
+            return .failure("Settings Signer Through Context (TOML)", "Failed - \(error)")
         }
     }
 
-    public func testSignerFromSettingsJSON() -> TestResult {
+    public func testSettingsSignerSignsThroughContextJSON() -> TestResult {
         let bundle = Bundle(for: type(of: self))
 
         guard let jsonURL = bundle.url(forResource: "test_settings_with_cawg_signing", withExtension: "json") else {
-            return .failure("Signer From Settings (JSON)", "Fixture not found: test_settings_with_cawg_signing.json")
+            return .failure("Settings Signer Through Context (JSON)", "Fixture not found: test_settings_with_cawg_signing.json")
         }
 
         do {
-            let settingsJSON = try String(contentsOf: jsonURL, encoding: .utf8)
-            let signer = try Signer(settingsJSON: settingsJSON)
+            let settings = try C2PASettings(json: try String(contentsOf: jsonURL, encoding: .utf8))
+            let context = try C2PAContext(settings: settings)
 
             // Load test image
             guard let sourceData = TestUtilities.loadPexelsTestImage() else {
-                return .failure("Signer From Settings (JSON)", "Could not load test image")
+                return .failure("Settings Signer Through Context (JSON)", "Could not load test image")
             }
 
             // Create manifest
             let manifestJSON = TestUtilities.createTestManifestJSON()
-            let builder = try Builder(manifestJSON: manifestJSON)
+            let builder = try Builder(context: context, manifestJSON: manifestJSON)
 
             let tempDir = FileManager.default.temporaryDirectory
             let sourceFile = tempDir.appendingPathComponent("settings_json_source_\(UUID().uuidString).jpg")
@@ -466,8 +465,7 @@ public final class SigningTests: TestImplementation {
             _ = try builder.sign(
                 format: "image/jpeg",
                 source: sourceStream,
-                destination: destStream,
-                signer: signer
+                destination: destStream
             )
 
             // Verify the signed image contains a valid manifest
@@ -479,7 +477,7 @@ public final class SigningTests: TestImplementation {
             guard let manifestData = manifestJSONResult.data(using: .utf8),
                 (try? JSONSerialization.jsonObject(with: manifestData) as? [String: Any]) != nil
             else {
-                return .failure("Signer From Settings (JSON)", "Could not parse manifest JSON")
+                return .failure("Settings Signer Through Context (JSON)", "Could not parse manifest JSON")
             }
 
             // Successfully signed and verified manifest
@@ -489,7 +487,7 @@ public final class SigningTests: TestImplementation {
                   let firstManifest = manifests.values.first as? [String: Any],
                   let assertions = firstManifest["assertions"] as? [[String: Any]] else {
                 return .success(
-                    "Signer From Settings (JSON)",
+                    "Settings Signer Through Context (JSON)",
                     "[PASS] Signed image with CAWG settings - manifest valid but no assertions to inspect")
             }
 
@@ -501,18 +499,18 @@ public final class SigningTests: TestImplementation {
 
             if hasCawgAssertion {
                 return .success(
-                    "Signer From Settings (JSON)",
+                    "Settings Signer Through Context (JSON)",
                     "[PASS] Signed image with CAWG signer - found CAWG assertions: \(assertionLabels)")
             } else {
                 return .success(
-                    "Signer From Settings (JSON)",
+                    "Settings Signer Through Context (JSON)",
                     "[PASS] Signed image with CAWG settings - assertions: \(assertionLabels)")
             }
 
         } catch let error as C2PAError {
-            return .failure("Signer From Settings (JSON)", "Failed - \(error)")
+            return .failure("Settings Signer Through Context (JSON)", "Failed - \(error)")
         } catch {
-            return .failure("Signer From Settings (JSON)", "Failed - \(error)")
+            return .failure("Settings Signer Through Context (JSON)", "Failed - \(error)")
         }
     }
 
@@ -733,8 +731,8 @@ public final class SigningTests: TestImplementation {
             testSignerWithTimestampAuthority(),
             await testWebServiceSignerCreation(),
             testSignerWithActualSigning(),
-            testSignerFromSettingsTOML(),
-            testSignerFromSettingsJSON(),
+            testSettingsSignerSignsThroughContextTOML(),
+            testSettingsSignerSignsThroughContextJSON(),
             // Edge case tests
             testDoubleSigningImage(),
             testZeroByteFile(),
