@@ -65,6 +65,7 @@ import Foundation
 /// - ``updateHashFromStream(format:stream:)``
 /// - ``signEmbeddable(format:)``
 /// - ``composeManifest(_:format:)``
+/// - ``composeManifest(_:format:context:)``
 ///
 /// ### Fragmented (BMFF) Hashing
 /// - ``setFixedSizeMerkle(_:)``
@@ -125,8 +126,7 @@ public final class Builder {
     /// - Throws: ``C2PAError/manifestValidationFailed(_:)`` if validation finds errors,
     ///   or ``C2PAError`` if the JSON cannot be parsed by the C layer.
     public convenience init(manifest: ManifestDefinition) throws {
-        try Self.enforce(ManifestValidator.validate(manifest))
-        try self.init(context: C2PAContext(), manifestJSON: manifest.toJSON())
+        try self.init(context: C2PAContext(), manifest: manifest)
     }
 
     /// Creates a new builder from a manifest JSON definition, using a default context.
@@ -590,6 +590,8 @@ public final class Builder {
     /// - Returns: The format-wrapped embeddable manifest bytes as `Data`.
     ///
     /// - Throws: ``C2PAError`` if composition fails.
+    ///
+    /// - SeeAlso: ``composeManifest(_:format:context:)``
     public func composeManifest(_ manifest: Data, format: String) throws -> Data {
         var out: UnsafePointer<UInt8>?
         let len = try manifest.withUnsafeBytes { buf -> Int64 in
@@ -597,6 +599,39 @@ public final class Builder {
                 ptr, format, buf.bindMemory(to: UInt8.self).baseAddress, UInt(manifest.count), &out))
         }
         return manifestData(length: len, pointer: out)
+    }
+
+    /// Composes a raw C2PA manifest into an embeddable version without a builder at hand.
+    ///
+    /// Composing depends on a context and on nothing else a builder holds, so this is the
+    /// form to use when all you have is the raw manifest bytes, for example a manifest
+    /// fetched from the cloud. With a builder already in hand, call
+    /// ``composeManifest(_:format:)`` on it instead.
+    ///
+    /// - Parameters:
+    ///   - manifest: The raw C2PA manifest bytes.
+    ///   - format: The MIME type of the target asset (e.g. `"image/jpeg"`).
+    ///   - context: The ``C2PAContext`` whose custom asset handlers are consulted. Pass
+    ///     `nil` to use a default context.
+    ///
+    /// - Returns: The format-wrapped embeddable manifest bytes as `Data`.
+    ///
+    /// - Throws: ``C2PAError`` if composition fails.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let embeddable = try Builder.composeManifest(rawManifest, format: "image/jpeg")
+    /// ```
+    public static func composeManifest(
+        _ manifest: Data,
+        format: String,
+        context: C2PAContext? = nil
+    ) throws -> Data {
+        let context = try context ?? C2PAContext()
+        let composer = Builder(
+            adopting: try guardNotNull(c2pa_builder_from_context(context.ptr)), context: context)
+        return try composer.composeManifest(manifest, format: format)
     }
 
     // MARK: - Fragmented (BMFF) Hashing
