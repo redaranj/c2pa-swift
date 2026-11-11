@@ -532,8 +532,7 @@ public final class BuilderTests: TestImplementation {
             }
             try imageData.write(to: assetURL)
 
-            let settingsJSON = "{\"version\":1,\"signer\":{\"local\":{\"alg\":\"es256\",\"sign_cert\":\(TestUtilities.jsonQuoted(TestUtilities.testCertsPEM)),\"private_key\":\(TestUtilities.jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
-            let settings = try C2PASettings(json: settingsJSON)
+            let settings = try C2PASettings(json: try TestUtilities.localSignerSettingsJSON())
             let context = try C2PAContext(settings: settings)
             let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
 
@@ -547,8 +546,6 @@ public final class BuilderTests: TestImplementation {
                 return .failure("Data Hash Signing", "Empty embeddable manifest")
             }
             return .success("Data Hash Signing", "[PASS] two-pass embeddable manifest: \(manifest.count) bytes")
-        } catch let error as C2PAError {
-            return .success("Data Hash Signing", "[WARN] data-hash path callable (error: \(error))")
         } catch {
             return .failure("Data Hash Signing", "Error: \(error)")
         }
@@ -571,11 +568,24 @@ public final class BuilderTests: TestImplementation {
                 destination: try Stream(writeTo: destURL),
                 signer: try TestUtilities.createTestSigner())
 
-            let composer = try Builder(manifestJSON: TestUtilities.createTestManifestJSON())
-            let composed = try composer.composeManifest(raw, format: "image/jpeg")
+            let composed = try signing.composeManifest(raw, format: "image/jpeg")
             guard composed.count > raw.count else {
                 return .failure(
                     name, "composed \(composed.count) bytes, expected JPEG framing on \(raw.count)")
+            }
+
+            // Composing needs no builder, only a context. On a default context the static
+            // form has the same handlers to consult, so it must frame the bytes identically.
+            let standalone = try Builder.composeManifest(raw, format: "image/jpeg")
+            guard standalone == composed else {
+                return .failure(
+                    name, "composed \(standalone.count) bytes without a builder, \(composed.count) with one")
+            }
+            let withContext = try Builder.composeManifest(
+                raw, format: "image/jpeg", context: try C2PAContext())
+            guard withContext == composed else {
+                return .failure(
+                    name, "composed \(withContext.count) bytes on a context passed in, \(composed.count) on a builder")
             }
             return .success(name, "[PASS] framed \(raw.count) manifest bytes as \(composed.count)")
         } catch {
@@ -586,12 +596,14 @@ public final class BuilderTests: TestImplementation {
     public func testComposeManifestRejectsUnsupportedFormat() -> TestResult {
         let name = "Compose Manifest Rejects Unsupported Format"
         do {
-            let builder = try Builder(manifestJSON: TestUtilities.createTestManifestJSON())
+            let context = try C2PAContext()
             // Composing frames the bytes for the format without validating them, so the
             // failure it can report is a format with no asset handler.
             do {
-                _ = try builder.composeManifest(
-                    Data([0x00, 0x01, 0x02, 0x03]), format: "application/x-unsupported")
+                _ = try Builder.composeManifest(
+                    Data([0x00, 0x01, 0x02, 0x03]),
+                    format: "application/x-unsupported",
+                    context: context)
                 return .failure(name, "composed a manifest for a format with no handler")
             } catch is C2PAError {
                 return .success(name, "[PASS] a format with no handler was rejected")
@@ -727,10 +739,8 @@ public final class BuilderTests: TestImplementation {
             guard let videoData = TestUtilities.loadVideoTestData() else {
                 return .failure("BMFF Merkle Hashing", "Could not load video1.mp4")
             }
-            let settingsJSON = "{\"version\":1,\"builder\":{\"created_assertion_labels\":[\"c2pa.actions\"]},"
-                + "\"signer\":{\"local\":{\"alg\":\"es256\","
-                + "\"sign_cert\":\(TestUtilities.jsonQuoted(TestUtilities.testCertsPEM)),"
-                + "\"private_key\":\(TestUtilities.jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}"
+            let settingsJSON = try TestUtilities.localSignerSettingsJSON(
+                merging: ["builder": ["created_assertion_labels": ["c2pa.actions"]]])
             let context = try C2PAContext(settings: try C2PASettings(json: settingsJSON))
             let builder = try Builder(context: context, manifestJSON: TestUtilities.createTestManifestJSON())
 

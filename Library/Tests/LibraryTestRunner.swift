@@ -1170,6 +1170,16 @@ final class ContextTests: XCTestCase {
         XCTAssertTrue(result.passed, result.message)
     }
 
+    func testProgrammaticSignerReplacesSettingsCawgSigner() throws {
+        let result = tests.testProgrammaticSignerReplacesSettingsCawgSigner()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
+    func testCawgIdentitySignerSignsThroughContext() throws {
+        let result = tests.testCawgIdentitySignerSignsThroughContext()
+        XCTAssertTrue(result.passed, result.message)
+    }
+
     func testSignerReuseAfterContextThrows() throws {
         let result = tests.testSignerReuseAfterContextThrows()
         XCTAssertTrue(result.passed, result.message)

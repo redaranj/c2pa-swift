@@ -11,27 +11,6 @@
 import C2PA
 import Foundation
 
-/// Collects values delivered from native callbacks.
-///
-/// Callbacks fire synchronously on the thread running the operation, but a plain array
-/// would still be shared mutable state as far as the compiler is concerned.
-private final class CallbackRecorder<Value>: @unchecked Sendable {
-    private let lock = NSLock()
-    private var values: [Value] = []
-
-    func record(_ value: Value) {
-        lock.lock()
-        defer { lock.unlock() }
-        values.append(value)
-    }
-
-    var recorded: [Value] {
-        lock.lock()
-        defer { lock.unlock() }
-        return values
-    }
-}
-
 /// Serves canned HTTP responses inside a `URLSession` without touching the network, so the
 /// `URLSession`-backed resolver can be exercised end to end. Only sessions that list this in
 /// `URLSessionConfiguration.protocolClasses` are affected.
@@ -91,12 +70,6 @@ private final class StubURLProtocol: URLProtocol {
     }
 
     override func stopLoading() {}
-}
-
-/// Test-only escape hatch: aliases a signer outside the compiler's region analysis so the
-/// runtime consumption guard stays exercisable once a context takes it as `sending`.
-private enum SmuggledSigner {
-    nonisolated(unsafe) static var signer: Signer?
 }
 
 // Context API tests - pure Swift implementation
@@ -597,19 +570,25 @@ public final class ContextTests: TestImplementation {
 
     /// Signs the Pexels test image with the signer on the builder's context.
     ///
+    /// The only ``C2PAError`` this lets through comes from the sign call itself. A fixture
+    /// or stream that cannot be set up throws ``TestSetupError`` instead, so a test that
+    /// expects signing to fail cannot pass on a broken setup.
+    ///
     /// - Returns: The manifest bytes and the signed asset.
     private static func signWithContextSigner(_ builder: Builder) throws -> (manifest: Data, asset: Data) {
         guard let imageData = TestUtilities.loadPexelsTestImage() else {
-            throw C2PAError.api("Could not load test image")
+            throw TestSetupError("Could not load test image")
         }
         let destURL = FileManager.default.temporaryDirectory.appendingPathComponent(
             "ctx_signer_\(UUID().uuidString).jpg")
         defer { try? FileManager.default.removeItem(at: destURL) }
 
+        let streams = try TestSetupError.wrapping("Could not open the test streams") {
+            (source: try Stream(data: imageData), destination: try Stream(writeTo: destURL))
+        }
+
         let manifest = try builder.sign(
-            format: "image/jpeg",
-            source: try Stream(data: imageData),
-            destination: try Stream(writeTo: destURL))
+            format: "image/jpeg", source: streams.source, destination: streams.destination)
         return (manifest, try Data(contentsOf: destURL))
     }
 
@@ -648,7 +627,13 @@ public final class ContextTests: TestImplementation {
             do {
                 _ = try Self.signWithContextSigner(builder)
                 return .failure(name, "sign succeeded on a context with no signer")
-            } catch is C2PAError {
+            } catch let error as C2PAError {
+                // The same builder signs when its context has a signer, as
+                // testContextSignerSigns shows, so all that is left to rule out is a
+                // failure that has nothing to do with the signer.
+                guard "\(error)".localizedCaseInsensitiveContains("signer") else {
+                    return .failure(name, "sign failed, but not for want of a signer: \(error)")
+                }
                 return .success(name, "[PASS] signing without a context signer threw")
             }
         } catch {
@@ -659,14 +644,9 @@ public final class ContextTests: TestImplementation {
     public func testProgrammaticSignerOverridesSettingsSigner() -> TestResult {
         let name = "Programmatic Signer Overrides Settings Signer"
         do {
-            let settingsJSON = """
-                {"version":1,"signer":{"local":{"alg":"es256",\
-                "sign_cert":\(TestUtilities.jsonQuoted(TestUtilities.testCertsPEM)),\
-                "private_key":\(TestUtilities.jsonQuoted(TestUtilities.testPrivateKeyPEM))}}}
-                """
             let calls = CallbackRecorder<Int>()
             let context = try C2PAContext(
-                settings: try C2PASettings(json: settingsJSON),
+                settings: try C2PASettings(json: try TestUtilities.localSignerSettingsJSON()),
                 signer: try TestUtilities.createTestCallbackSigner { calls.record($0.count) })
             let builder = try Builder(
                 context: context, manifestJSON: TestUtilities.createTestManifestJSON())
@@ -681,12 +661,67 @@ public final class ContextTests: TestImplementation {
         }
     }
 
+    public func testProgrammaticSignerReplacesSettingsCawgSigner() -> TestResult {
+        let name = "Programmatic Signer Replaces Settings CAWG Signer"
+        do {
+            let settings = try C2PASettings(json: try TestUtilities.localSignerSettingsJSON(
+                merging: ["cawg_x509_signer": TestUtilities.localSignerSection]))
+
+            // The settings' CAWG signer wraps the signer the settings configure, so on its
+            // own a context built from them adds the identity assertion.
+            let fromSettings = try Builder(
+                context: try C2PAContext(settings: settings),
+                manifestJSON: TestUtilities.createTestManifestJSON())
+            let settingsLabels = try TestUtilities.activeManifestAssertionLabels(
+                inJPEG: try Self.signWithContextSigner(fromSettings).asset)
+            guard TestUtilities.containsCawgIdentity(settingsLabels) else {
+                return .failure(
+                    name, "the settings' CAWG signer added no cawg.identity: \(settingsLabels)")
+            }
+
+            // A signer passed in is used as it is: nothing from the settings wraps it.
+            let programmatic = try Builder(
+                context: try C2PAContext(
+                    settings: settings, signer: try TestUtilities.createTestCallbackSigner()),
+                manifestJSON: TestUtilities.createTestManifestJSON())
+            let programmaticLabels = try TestUtilities.activeManifestAssertionLabels(
+                inJPEG: try Self.signWithContextSigner(programmatic).asset)
+            guard !TestUtilities.containsCawgIdentity(programmaticLabels) else {
+                return .failure(
+                    name, "the settings' CAWG signer wrapped a signer passed in: \(programmaticLabels)")
+            }
+            return .success(name, "[PASS] a signer passed in replaced the settings' CAWG signer too")
+        } catch {
+            return .failure(name, "Error: \(error)")
+        }
+    }
+
+    public func testCawgIdentitySignerSignsThroughContext() -> TestResult {
+        let name = "CAWG Identity Signer Signs Through Context"
+        do {
+            let combined = try Signer.withCawgIdentity(
+                try TestUtilities.createTestSigner(),
+                identity: try TestUtilities.createTestSigner(),
+                referencedAssertions: ["c2pa.actions"])
+            let builder = try Builder(
+                context: try C2PAContext(signer: combined),
+                manifestJSON: TestUtilities.createTestManifestJSON())
+            let labels = try TestUtilities.activeManifestAssertionLabels(
+                inJPEG: try Self.signWithContextSigner(builder).asset)
+            guard TestUtilities.containsCawgIdentity(labels) else {
+                return .failure(name, "the combined signer added no cawg.identity: \(labels)")
+            }
+            return .success(name, "[PASS] a combined signer on a context added cawg.identity")
+        } catch {
+            return .failure(name, "Error: \(error)")
+        }
+    }
+
     public func testSignerReuseAfterContextThrows() -> TestResult {
         let name = "Signer Reuse After Context Throws"
-        defer { SmuggledSigner.signer = nil }
         do {
             let signer = try TestUtilities.createTestCallbackSigner()
-            SmuggledSigner.signer = signer
+            let alias = SignerAlias(signer)
             let context = try C2PAContext(signer: signer)
             let builder = try Builder(
                 context: context, manifestJSON: TestUtilities.createTestManifestJSON())
@@ -699,7 +734,7 @@ public final class ContextTests: TestImplementation {
                     format: "image/jpeg",
                     source: try Stream(data: imageData),
                     destination: try Stream(write: { _, count in count }),
-                    signer: SmuggledSigner.signer!)
+                    signer: alias.signer)
                 return .failure(name, "signing with a signer owned by a context should have thrown")
             } catch let error as C2PAError {
                 guard "\(error)".contains("consumed") else {
@@ -708,7 +743,7 @@ public final class ContextTests: TestImplementation {
             }
 
             do {
-                _ = try C2PAContext(signer: SmuggledSigner.signer!)
+                _ = try C2PAContext(signer: alias.signer)
                 return .failure(name, "a second context should not accept the same signer")
             } catch let error as C2PAError {
                 guard "\(error)".contains("consumed") else {
@@ -723,15 +758,14 @@ public final class ContextTests: TestImplementation {
 
     public func testContextRejectsConsumedSigner() -> TestResult {
         let name = "Context Rejects Consumed Signer"
-        defer { SmuggledSigner.signer = nil }
         do {
             let claimSigner = try TestUtilities.createTestSigner()
-            SmuggledSigner.signer = claimSigner
+            let alias = SignerAlias(claimSigner)
             _ = try Signer.withCawgIdentity(
                 claimSigner, identity: try TestUtilities.createTestSigner())
 
             do {
-                _ = try C2PAContext(signer: SmuggledSigner.signer!)
+                _ = try C2PAContext(signer: alias.signer)
                 return .failure(name, "a context accepted a signer consumed by withCawgIdentity")
             } catch let error as C2PAError {
                 guard "\(error)".contains("consumed") else {
@@ -817,9 +851,11 @@ public final class ContextTests: TestImplementation {
     public func testContextSignerCallbackErrorPropagates() -> TestResult {
         let name = "Context Signer Callback Error Propagates"
         do {
+            let calls = CallbackRecorder<Int>()
             let signer = try Signer(
                 algorithm: .es256, certificateChainPEM: TestUtilities.testCertsPEM
-            ) { _ in
+            ) { data in
+                calls.record(data.count)
                 throw C2PAError.api("Callback intentionally failed")
             }
             let builder = try Builder(
@@ -828,7 +864,10 @@ public final class ContextTests: TestImplementation {
             do {
                 _ = try Self.signWithContextSigner(builder)
                 return .failure(name, "sign succeeded although the signer threw")
-            } catch is C2PAError {
+            } catch let error as C2PAError {
+                guard !calls.recorded.isEmpty else {
+                    return .failure(name, "sign failed before the signer ran: \(error)")
+                }
                 return .success(name, "[PASS] the callback's error surfaced from sign")
             }
         } catch {
@@ -858,6 +897,8 @@ public final class ContextTests: TestImplementation {
             testContextSignerSigns(),
             testContextWithoutSignerSignFails(),
             testProgrammaticSignerOverridesSettingsSigner(),
+            testProgrammaticSignerReplacesSettingsCawgSigner(),
+            testCawgIdentitySignerSignsThroughContext(),
             testSignerReuseAfterContextThrows(),
             testContextRejectsConsumedSigner(),
             testContextReleasesCallbackSigner(),
