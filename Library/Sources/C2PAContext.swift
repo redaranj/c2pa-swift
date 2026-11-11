@@ -224,6 +224,11 @@ private let httpResolverTrampoline: C2paHttpResolverCallback = { context, reques
 /// from it sign with that signer through ``Builder/sign(format:source:destination:)``
 /// and ``Builder/signEmbeddable(format:)``.
 ///
+/// A signer passed in replaces everything the settings say about signing: neither their
+/// `signer` section nor their `cawg_x509_signer` section is used. To have such a signer
+/// add a `cawg.identity` assertion, combine it with an identity signer through
+/// ``Signer/withCawgIdentity(_:identity:referencedAssertions:roles:)`` first.
+///
 /// ## Topics
 ///
 /// ### Creating a Context
@@ -290,8 +295,10 @@ public final class C2PAContext: @unchecked Sendable {
     ///   - settings: The ``C2PASettings`` to configure this context with.
     ///   - signer: A ``Signer`` for builders created from this context to sign with. The
     ///     context takes ownership of it, so it cannot be used again afterwards, not even
-    ///     after this initializer throws. It takes priority over a signer configured in
-    ///     `settings`.
+    ///     after this initializer throws. It replaces everything `settings` say about
+    ///     signing, the `cawg_x509_signer` section as well as the `signer` section, so no
+    ///     `cawg.identity` assertion is added on its behalf. For one, pass a signer combined
+    ///     through ``Signer/withCawgIdentity(_:identity:referencedAssertions:roles:)``.
     ///   - onProgress: Observes operation progress and decides whether it continues.
     ///     Called synchronously at checkpoints, on whichever thread runs the operation.
     ///     Return ``ProgressDisposition/cancel`` to stop just this operation, or use
@@ -358,9 +365,12 @@ public final class C2PAContext: @unchecked Sendable {
             }
 
             // Last, so that a failure configuring anything above leaves the signer
-            // unconsumed and freed as usual. The native call untracks the signer before
-            // anything in it can fail, so it is marked consumed first: a failure past that
-            // point leaks the signer rather than risking a double free.
+            // unconsumed and freed as usual. The native call validates the builder handle
+            // first, then untracks the signer and owns it from there on. Only a failure of
+            // that first check would leave a live signer with us, and it cannot fail for
+            // the builder created above. So the signer is marked consumed before the call:
+            // at worst it leaks, where freeing it could be a double free. Verified against
+            // c2pa-v0.91.7, and worth re-checking whenever C2PA_VERSION moves.
             if let signer {
                 _ = try guardNonNegative(
                     Int64(c2pa_context_builder_set_signer(builder, try signer.consume())))

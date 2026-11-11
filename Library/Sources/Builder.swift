@@ -445,7 +445,8 @@ public final class Builder {
     ///
     /// The signer comes from the ``C2PAContext`` the builder was created from: either one
     /// passed to ``C2PAContext/init(settings:signer:onProgress:httpResolver:)``, or one
-    /// configured in its settings. When both are present, the one passed in wins.
+    /// configured in its settings. When both are present, the one passed in signs and the
+    /// settings' signer configuration is ignored, `cawg_x509_signer` included.
     ///
     /// - Parameters:
     ///   - format: The MIME type of the asset being signed (e.g., "image/jpeg").
