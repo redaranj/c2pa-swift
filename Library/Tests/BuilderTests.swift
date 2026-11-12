@@ -39,16 +39,10 @@ import Testing
         return try JSONSerialization.data(withJSONObject: object).utf8Text
     }
 
-    /// Settings whose local signer is the test certificate, for the
-    /// context-signed (embeddable) flows.
+    /// A context whose settings configure the test certificate as its signer,
+    /// for the context-signed (embeddable) flows.
     private func signerContext(extra: [String: Any] = [:]) throws -> C2PAContext {
-        var settings: [String: Any] = [
-            "version": 1,
-            "signer": ["local": ["alg": "es256", "sign_cert": try Fixtures.certsPEM(), "private_key": try Fixtures.privateKeyPEM()]]
-        ]
-        settings.merge(extra) { _, new in new }
-        let json = try JSONSerialization.data(withJSONObject: settings).utf8Text
-        return try C2PAContext(settings: C2PASettings(json: json))
+        try C2PAContext(settings: Fixtures.localSignerSettings(adding: extra))
     }
 
     /// A builder that can write ingredient archives: c2pa-rs refuses unless
@@ -294,8 +288,7 @@ import Testing
     /// The data-hash flow end to end: the placeholder goes in after the JPEG's
     /// start-of-image marker, its range is excluded from the hash, and the
     /// signed manifest, which must be the placeholder's size, replaces it.
-    @Test func dataHashSigningWorkflow() throws {
-        let builder = try Builder(context: signerContext(), manifestJSON: Fixtures.createdManifestJSON())
+    private func signDataHashed(_ builder: Builder) throws -> ManifestStore {
         let placeholder = try builder.placeholder(format: "image/jpeg")
         var asset = try Fixtures.data(Fixtures.pexelsJPEG)
         asset.insert(contentsOf: placeholder, at: 2)
@@ -306,47 +299,49 @@ import Testing
         try #require(signed.count == placeholder.count, "signed \(signed.count) bytes into a \(placeholder.count)-byte placeholder")
         asset.replaceSubrange(2..<(2 + placeholder.count), with: signed)
 
-        let store = try ManifestStore(json: Reader(format: "image/jpeg", stream: Stream(data: asset)).json())
+        return try ManifestStore(json: Reader(format: "image/jpeg", stream: Stream(data: asset)).json())
+    }
+
+    @Test func dataHashSigningWorkflow() throws {
+        let builder = try Builder(context: signerContext(), manifestJSON: Fixtures.createdManifestJSON())
+        let store = try signDataHashed(builder)
         #expect(try store.assertionLabels().contains("c2pa.test"))
         #expect(store.validationState == "Valid")
     }
 
-    @Test func dataHashedPlaceholder() throws {
-        let builder = try Builder(context: C2PAContext(), manifestJSON: Fixtures.createdManifestJSON())
-        #expect(try builder.dataHashedPlaceholder(reservedSize: 16 * 1024, format: "image/jpeg").count >= 16 * 1024)
+    /// The same flow with a callback signer handed to the context instead of
+    /// one configured in its settings.
+    @Test func dataHashFlowWithCallbackSigner() throws {
+        let builder = try Builder(
+            context: C2PAContext(signer: Fixtures.callbackSigner()), manifestJSON: Fixtures.createdManifestJSON())
+        let store = try signDataHashed(builder)
+        #expect(try store.assertionLabels().contains("c2pa.test"))
+        #expect(store.validationState == "Valid")
     }
 
-    /// Raw manifest bytes wrapped for JPEG become APP11 segments.
-    @Test func formatEmbeddable() throws {
+    /// Raw manifest bytes composed for JPEG become APP11 segments. Composing
+    /// needs only a context, so the static form frames them identically, on a
+    /// default context and on one passed in.
+    @Test func composeManifest() throws {
         let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
         builder.setNoEmbed()
         let signed = try sign(builder)
         defer { try? FileManager.default.removeItem(at: signed.url) }
 
-        let embeddable = try Builder.formatEmbeddable(signed.manifest, format: "image/jpeg")
-        #expect(embeddable.count > signed.manifest.count)
-        #expect(embeddable.prefix(2) == Data([0xFF, 0xEB]), "expected a JPEG APP11 marker")
+        let composed = try builder.composeManifest(signed.manifest, format: "image/jpeg")
+        #expect(composed.count > signed.manifest.count)
+        #expect(composed.prefix(2) == Data([0xFF, 0xEB]), "expected a JPEG APP11 marker")
+        #expect(try Builder.composeManifest(signed.manifest, format: "image/jpeg") == composed)
+        #expect(try Builder.composeManifest(signed.manifest, format: "image/jpeg", context: C2PAContext()) == composed)
     }
 
-    /// The legacy data-hash sequence, which c2pa-rs requires in this order:
-    /// a placeholder from the same builder goes into the asset, the data hash
-    /// excludes it, and the signed manifest replaces it byte for byte.
-    @Test func signDataHashedEmbeddable() throws {
-        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
-        let signer = try Fixtures.signer()
-        let placeholder = try builder.dataHashedPlaceholder(reservedSize: signer.reserveSize(), format: "image/jpeg")
-        var asset = try Fixtures.data(Fixtures.pexelsJPEG)
-        asset.insert(contentsOf: placeholder, at: 2)
-
-        let dataHash = #"{"exclusions": [{"start": 2, "length": \#(placeholder.count)}], "name": "jumbf manifest", "alg": "sha256", "hash": "", "pad": " "}"#
-        let embeddable = try builder.signDataHashedEmbeddable(
-            signer: signer, dataHash: dataHash, format: "image/jpeg", asset: Stream(data: asset))
-        try #require(embeddable.count == placeholder.count, "signed \(embeddable.count) bytes into a \(placeholder.count)-byte placeholder")
-        asset.replaceSubrange(2..<(2 + placeholder.count), with: embeddable)
-
-        let store = try ManifestStore(json: Reader(format: "image/jpeg", stream: Stream(data: asset)).json())
-        #expect(try store.assertionLabels().contains("c2pa.test"))
-        #expect(store.validationState == "Valid")
+    /// Composing frames the bytes without validating them, so the failure it
+    /// can report is a format with no asset handler.
+    @Test func composeManifestRejectsUnsupportedFormat() throws {
+        let context = try C2PAContext()
+        #expect(throws: C2PAError.self) {
+            try Builder.composeManifest(Data([0x00, 0x01, 0x02, 0x03]), format: "application/x-unsupported", context: context)
+        }
     }
 
     /// The fragmented BMFF flow; the asset itself won't validate (the mdat

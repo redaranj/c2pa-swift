@@ -147,15 +147,15 @@ private final class CallRecorder: @unchecked Sendable {
 
     // MARK: - Settings signers
 
-    @Test func signerFromSettingsTOML() throws {
-        let signer = try Signer(settingsTOML: Fixtures.text("test_settings_with_cawg_signing.toml"))
-        let labels = try signAndRead(signer, manifestJSON: cawgManifestJSON()).assertionLabels()
-        #expect(labels.contains("cawg.identity"), "labels: \(labels)")
-    }
-
-    @Test func signerFromSettingsJSON() throws {
-        let signer = try Signer(settingsJSON: Fixtures.text("test_settings_with_cawg_signing.json"))
-        let labels = try signAndRead(signer, manifestJSON: cawgManifestJSON()).assertionLabels()
+    /// The CAWG settings fixtures configure a signer and a CAWG X.509 signer on
+    /// top of it, so a context built from them signs and adds the identity
+    /// assertion.
+    @Test(arguments: ["toml", "json"])
+    func settingsSignerSignsThroughContext(format: String) throws {
+        let text = try Fixtures.text("test_settings_with_cawg_signing.\(format)")
+        let settings = try format == "toml" ? C2PASettings(toml: text) : C2PASettings(json: text)
+        let builder = try Builder(context: C2PAContext(settings: settings), manifestJSON: cawgManifestJSON())
+        let labels = try Fixtures.signAndReadWithContextSigner(builder).assertionLabels()
         #expect(labels.contains("cawg.identity"), "labels: \(labels)")
     }
 

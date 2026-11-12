@@ -22,14 +22,6 @@ import CryptoKit
 import Crypto
 #endif
 
-/// Holds signers past the call that consumes them, so the runtime guard on a
-/// consumed signer can be exercised; the compiler's region checks forbid
-/// reaching them any other way.
-private enum SmuggledSigner {
-    nonisolated(unsafe) static var claim: Signer?
-    nonisolated(unsafe) static var identity: Signer?
-}
-
 private final class CallRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var sizes: [Int] = []
@@ -122,36 +114,23 @@ private final class CallRecorder: @unchecked Sendable {
         #expect(calls.recorded.count == 1, "the error must come from the callback, not from setup")
     }
 
-    // MARK: - Global settings
+    /// The C API rejects strings over 1 MiB, so creation fails after the
+    /// callback has been retained for the signer; the failure must release it.
+    @Test func failedSignerCreationReleasesCallback() {
+        final class Captured: Sendable {}
 
-    /// loadSettings sets thread-local settings that Builder(manifestJSON:)
-    /// uses. Each test turns thumbnails off, checks the effect, and turns them
-    /// back on before returning, all on this thread.
-    private func expectThumbnailsDisabled(format: Signer.SettingsFormat, disable: String, restore: String) throws {
-        try Signer.loadSettings(disable, format: format)
-        defer { try? Signer.loadSettings(restore, format: format) }
-        let store = try Fixtures.signAndRead(Builder(manifestJSON: Fixtures.createdManifestJSON()))
-        #expect(try store.active["thumbnail"] == nil)
-    }
-
-    @Test func loadSettingsJSON() throws {
-        try expectThumbnailsDisabled(
-            format: .json,
-            disable: #"{"version": 1, "builder": {"thumbnail": {"enabled": false}}}"#,
-            restore: #"{"version": 1, "builder": {"thumbnail": {"enabled": true}}}"#)
-    }
-
-    @Test func loadSettingsTOML() throws {
-        try expectThumbnailsDisabled(
-            format: .toml,
-            disable: "version = 1\n[builder.thumbnail]\nenabled = false\n",
-            restore: "version = 1\n[builder.thumbnail]\nenabled = true\n")
-    }
-
-    @Test func loadSettingsInvalidJSON() {
-        #expect(throws: C2PAError.self) {
-            try Signer.loadSettings("{ invalid json }", format: .json)
+        weak var weakCaptured: Captured?
+        do {
+            let captured = Captured()
+            weakCaptured = captured
+            let oversizedChain = String(repeating: "A", count: 1_048_577)
+            #expect(throws: C2PAError.self, "created a signer over an oversized certificate chain") {
+                try Signer(algorithm: .es256, certificateChainPEM: oversizedChain) { data in
+                    withExtendedLifetime(captured) { data }
+                }
+            }
         }
+        #expect(weakCaptured == nil, "the callback was retained after signer creation failed")
     }
 
     // MARK: - Keychain public keys
@@ -198,39 +177,29 @@ private final class CallRecorder: @unchecked Sendable {
         #expect(try combined.reserveSize() >= plain)
     }
 
-    /// Both tests below park signers in SmuggledSigner's statics, so they must
-    /// not overlap.
-    @Suite(.serialized) struct ConsumedSigners {
+    /// Both inputs are consumed by the combine; reusing either through an
+    /// alias must throw rather than dereference a pointer the combined signer owns.
+    @Test func consumedSignerIsGuarded() throws {
+        let claim = try Fixtures.signer()
+        let identity = try Fixtures.signer()
+        let claimAlias = SignerAlias(claim)
+        let identityAlias = SignerAlias(identity)
+        _ = try Signer.withCawgIdentity(claim, identity: identity)
 
-        @Test func consumedSignerIsGuarded() throws {
-            defer {
-                SmuggledSigner.claim = nil
-                SmuggledSigner.identity = nil
-            }
-            let claim = try Fixtures.signer()
-            let identity = try Fixtures.signer()
-            SmuggledSigner.claim = claim
-            SmuggledSigner.identity = identity
-            _ = try Signer.withCawgIdentity(claim, identity: identity)
-
-            // Read the parked signers straight from the statics: a local would be
-            // region-checked as already sent.
-            #expect(throws: C2PAError.self, "reserveSize on a consumed signer") {
-                try SmuggledSigner.claim!.reserveSize()
-            }
-            #expect(throws: C2PAError.self, "re-combining consumed signers") {
-                try Signer.withCawgIdentity(SmuggledSigner.claim!, identity: SmuggledSigner.identity!)
-            }
+        #expect(throws: C2PAError.self, "reserveSize on a consumed signer") {
+            try claimAlias.signer.reserveSize()
         }
-
-        @Test func cawgSameInstanceRejected() throws {
-            defer { SmuggledSigner.claim = nil }
-            SmuggledSigner.claim = try Fixtures.signer()
-            let error = #expect(throws: C2PAError.self) {
-                try Signer.withCawgIdentity(SmuggledSigner.claim!, identity: SmuggledSigner.claim!)
-            }
-            #expect(error?.localizedDescription.contains("distinct") == true, "error: \(String(describing: error))")
-            #expect(try SmuggledSigner.claim?.reserveSize() ?? 0 > 0, "the signer stays usable after a rejected combine")
+        #expect(throws: C2PAError.self, "re-combining consumed signers") {
+            try Signer.withCawgIdentity(claimAlias.signer, identity: identityAlias.signer)
         }
+    }
+
+    @Test func cawgSameInstanceRejected() throws {
+        let alias = SignerAlias(try Fixtures.signer())
+        let error = #expect(throws: C2PAError.self) {
+            try Signer.withCawgIdentity(alias.signer, identity: alias.signer)
+        }
+        #expect(error?.localizedDescription.contains("distinct") == true, "error: \(String(describing: error))")
+        #expect(try alias.signer.reserveSize() > 0, "the signer stays usable after a rejected combine")
     }
 }

@@ -11,10 +11,11 @@
 //  StreamTests.swift
 //
 
-import C2PA
 import class C2PA.Stream // swiftlint:disable:this duplicate_imports
 import Foundation
 import Testing
+
+@testable import C2PA
 
 /// A stream is only proven by the library reading from or writing to it, so
 /// each test drives one through a Reader or Builder and checks what came out.
@@ -143,5 +144,85 @@ import Testing
             signer: Fixtures.signer())
         #expect(!manifest.isEmpty, "sign returns the manifest bytes it embedded")
         #expect(try ManifestStore(json: C2PA.readFile(at: output)).assertionLabels().contains("c2pa.test"))
+    }
+}
+
+/// Signs into an in-memory destination whose write and flush go through the
+/// same adapters as the file-backed streams, so a failing operation must fail
+/// the signing.
+@Suite struct StreamErrorPropagationTests {
+
+    private struct InjectedFailure: Error {}
+
+    private final class MemoryFile {
+        var data = Data()
+        var position = 0
+
+        func read(_ buffer: UnsafeMutableRawPointer, _ count: Int) -> Int {
+            let available = max(0, min(count, data.count - position))
+            if available > 0 {
+                data.copyBytes(to: buffer.assumingMemoryBound(to: UInt8.self), from: position..<(position + available))
+                position += available
+            }
+            return available
+        }
+
+        func seek(_ offset: Int, from base: Int) -> Int {
+            position = max(0, base + offset)
+            return position
+        }
+
+        func write(_ bytes: Data) {
+            let end = position + bytes.count
+            if end > data.count {
+                data.append(Data(count: end - data.count))
+            }
+            data.replaceSubrange(position..<end, with: bytes)
+            position = end
+        }
+    }
+
+    private func sign(
+        into destination: MemoryFile,
+        write: @escaping (Data) throws -> Void,
+        synchronize: @escaping () throws -> Void
+    ) throws {
+        let stream = try Stream(
+            read: destination.read,
+            seek: { offset, origin in
+                switch origin.rawValue {
+                case 0: destination.seek(offset, from: 0)
+                case 1: destination.seek(offset, from: destination.position)
+                case 2: destination.seek(offset, from: destination.data.count)
+                default: -1
+                }
+            },
+            write: Stream.writer(write),
+            flush: Stream.flusher(synchronize))
+        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON(claimGenerator: "stream_error_test/1.0"))
+        try builder.sign(
+            format: "image/jpeg", source: Fixtures.stream(Fixtures.pexelsJPEG), destination: stream, signer: Fixtures.signer())
+    }
+
+    @Test func signSucceedsWhenDestinationSucceeds() throws {
+        let destination = MemoryFile()
+        try sign(into: destination, write: destination.write, synchronize: {})
+        let store = try ManifestStore(json: Reader(format: "image/jpeg", stream: Stream(data: destination.data)).json())
+        #expect(try store.assertionLabels().contains("c2pa.test"))
+    }
+
+    @Test func signFailsWhenDestinationWriteFails() {
+        let destination = MemoryFile()
+        #expect(throws: C2PAError.self) {
+            try sign(into: destination, write: { _ in throw InjectedFailure() }, synchronize: {})
+        }
+    }
+
+    @Test func signFailsWhenDestinationFlushFails() {
+        let destination = MemoryFile()
+        #expect(throws: C2PAError.self) {
+            try sign(into: destination, write: destination.write, synchronize: { throw InjectedFailure() })
+        }
+        #expect(!destination.data.isEmpty, "the writes must succeed for the failure to come from the flush")
     }
 }

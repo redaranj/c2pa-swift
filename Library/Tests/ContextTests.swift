@@ -131,6 +131,11 @@ private final class StubURLProtocol: URLProtocol {
         try Fixtures.signAndRead(Builder(context: context, manifestJSON: Fixtures.createdManifestJSON()))
     }
 
+    /// Like signThroughContext, but signing with the signer the context carries.
+    private func signWithContextSigner(_ context: C2PAContext) throws -> ManifestStore {
+        try Fixtures.signAndReadWithContextSigner(Builder(context: context, manifestJSON: Fixtures.createdManifestJSON()))
+    }
+
     // MARK: - Creation and settings
 
     @Test func contextDefaultCreation() throws {
@@ -319,5 +324,146 @@ private final class StubURLProtocol: URLProtocol {
         #expect(request.url == Self.remoteManifestURL)
         #expect(request.httpMethod == "GET")
         #expect(try ManifestStore(json: json).assertionLabels().contains("c2pa.test"))
+    }
+
+    // MARK: - Context signers
+
+    /// A signer handed to a context signs for the builders created from it.
+    @Test func contextSignerSigns() throws {
+        let calls = CallbackRecorder<Int>()
+        let context = try C2PAContext(signer: Fixtures.callbackSigner { calls.record($0) })
+        let store = try signWithContextSigner(context)
+        #expect(!calls.recorded.isEmpty, "the context's signer never ran")
+        #expect(try store.assertionLabels().contains("c2pa.test"))
+        #expect(store.validationState == "Valid")
+    }
+
+    /// The same builder signs once its context has a signer (contextSignerSigns),
+    /// so what is left to rule out here is a failure unrelated to the signer.
+    @Test func contextWithoutSignerSignFails() throws {
+        let context = try C2PAContext()
+        let error = try #require(throws: C2PAError.self, "sign succeeded on a context with no signer") {
+            try signWithContextSigner(context)
+        }
+        #expect(error.localizedDescription.localizedCaseInsensitiveContains("signer"), "error: \(error)")
+    }
+
+    @Test func programmaticSignerOverridesSettingsSigner() throws {
+        let calls = CallbackRecorder<Int>()
+        let context = try C2PAContext(
+            settings: Fixtures.localSignerSettings(), signer: Fixtures.callbackSigner { calls.record($0) })
+        _ = try signWithContextSigner(context)
+        #expect(!calls.recorded.isEmpty, "the settings signer signed instead of the one passed in")
+    }
+
+    /// The settings' CAWG signer wraps the signer the settings configure, so a
+    /// context built from them alone adds the identity assertion. A signer
+    /// passed in is used as it is: nothing from the settings wraps it.
+    @Test func programmaticSignerReplacesSettingsCawgSigner() throws {
+        let settings = try Fixtures.localSignerSettings(adding: ["cawg_x509_signer": Fixtures.localSignerSection()])
+
+        let fromSettings = try signWithContextSigner(C2PAContext(settings: settings)).assertionLabels()
+        #expect(fromSettings.contains("cawg.identity"), "labels: \(fromSettings)")
+
+        let passedIn = try signWithContextSigner(
+            C2PAContext(settings: settings, signer: Fixtures.callbackSigner())
+        ).assertionLabels()
+        #expect(!passedIn.contains { $0.hasPrefix("cawg.identity") }, "labels: \(passedIn)")
+    }
+
+    /// For a signer passed in to add the identity assertion, it is combined
+    /// with an identity signer first.
+    @Test func cawgIdentitySignerSignsThroughContext() throws {
+        let combined = try Signer.withCawgIdentity(
+            Fixtures.signer(), identity: Fixtures.signer(), referencedAssertions: ["c2pa.actions"])
+        let labels = try signWithContextSigner(C2PAContext(signer: combined)).assertionLabels()
+        #expect(labels.contains("cawg.identity"), "labels: \(labels)")
+    }
+
+    /// The context owns the signer it was given: any later use of it throws.
+    @Test func signerReuseAfterContextThrows() throws {
+        let signer = try Fixtures.callbackSigner()
+        let alias = SignerAlias(signer)
+        let context = try C2PAContext(signer: signer)
+        let builder = try Builder(context: context, manifestJSON: Fixtures.createdManifestJSON())
+
+        let signError = try #require(throws: C2PAError.self, "signed with a signer a context owns") {
+            try Fixtures.signAndRead(builder, signer: alias.signer)
+        }
+        #expect(signError.localizedDescription.contains("consumed"), "error: \(signError)")
+
+        let contextError = try #require(throws: C2PAError.self, "a second context accepted the same signer") {
+            try C2PAContext(signer: alias.signer)
+        }
+        #expect(contextError.localizedDescription.contains("consumed"), "error: \(contextError)")
+    }
+
+    @Test func contextRejectsConsumedSigner() throws {
+        let claim = try Fixtures.signer()
+        let alias = SignerAlias(claim)
+        _ = try Signer.withCawgIdentity(claim, identity: Fixtures.signer())
+
+        let error = try #require(throws: C2PAError.self, "a context accepted a signer consumed by withCawgIdentity") {
+            try C2PAContext(signer: alias.signer)
+        }
+        #expect(error.localizedDescription.contains("consumed"), "error: \(error)")
+    }
+
+    /// The context holds a callback signer's closure for exactly as long as it
+    /// lives itself.
+    @Test func contextReleasesCallbackSigner() throws {
+        final class Captured: Sendable {}
+
+        weak var weakCaptured: Captured?
+        do {
+            let captured = Captured()
+            weakCaptured = captured
+            let signer = try Signer(algorithm: .es256, certificateChainPEM: Fixtures.certsPEM()) { data in
+                withExtendedLifetime(captured) { data }
+            }
+            _ = try C2PAContext(signer: signer)
+        }
+        #expect(weakCaptured == nil, "the callback outlived its context")
+    }
+
+    /// A builder keeps its context alive, and with it the signer, after the
+    /// caller has let go of both.
+    @Test func contextSignerOutlivesCallerScope() throws {
+        func scopedBuilder() throws -> Builder {
+            let context = try C2PAContext(signer: Fixtures.callbackSigner())
+            return try Builder(context: context, manifestJSON: Fixtures.createdManifestJSON())
+        }
+        #expect(try Fixtures.signAndReadWithContextSigner(scopedBuilder()).validationState == "Valid")
+    }
+
+    /// Builders on different threads sign through one context's signer at once.
+    @Test func concurrentSignsShareContextSigner() throws {
+        let calls = CallbackRecorder<Int>()
+        let failures = CallbackRecorder<String>()
+        let context = try C2PAContext(signer: Fixtures.callbackSigner { calls.record($0) })
+
+        DispatchQueue.concurrentPerform(iterations: 2) { _ in
+            do {
+                let builder = try Builder(context: context, manifestJSON: Fixtures.createdManifestJSON())
+                _ = try Fixtures.signAndReadWithContextSigner(builder)
+            } catch {
+                failures.record("\(error)")
+            }
+        }
+        #expect(failures.recorded.isEmpty, "a concurrent sign failed: \(failures.recorded)")
+        #expect(calls.recorded.count == 2, "the signer ran \(calls.recorded.count) times for two signs")
+    }
+
+    @Test func contextSignerCallbackErrorPropagates() throws {
+        let calls = CallbackRecorder<Int>()
+        let signer = try Signer(algorithm: .es256, certificateChainPEM: Fixtures.certsPEM()) { data in
+            calls.record(data.count)
+            throw C2PAError.api("Callback intentionally failed")
+        }
+        let context = try C2PAContext(signer: signer)
+        #expect(throws: C2PAError.self, "sign succeeded although the signer threw") {
+            try signWithContextSigner(context)
+        }
+        #expect(calls.recorded.count == 1, "the error must come from the callback, not from setup")
     }
 }

@@ -15,6 +15,12 @@ import C2PA
 import class C2PA.Stream // swiftlint:disable:this duplicate_imports
 import Foundation
 
+#if canImport(CryptoKit)
+import CryptoKit
+#else
+import Crypto
+#endif
+
 /// A fixture that is not in the test bundle, usually because a resource was not copied.
 enum FixtureError: Error, Equatable {
     case missing(String)
@@ -65,6 +71,30 @@ enum Fixtures {
 
     static func signerInfo() throws -> SignerInfo {
         SignerInfo(algorithm: .es256, certificatePEM: try certsPEM(), privateKeyPEM: try privateKeyPEM())
+    }
+
+    /// A callback signer that really signs with the test key, so what it signs
+    /// validates. `onSign` receives the size of each payload before it is signed.
+    static func callbackSigner(onSign: @escaping @Sendable (Int) -> Void = { _ in }) throws -> Signer {
+        let key = try P256.Signing.PrivateKey(pemRepresentation: privateKeyPEM())
+        return try Signer(algorithm: .es256, certificateChainPEM: certsPEM()) { data in
+            onSign(data.count)
+            return try key.signature(for: data).rawRepresentation
+        }
+    }
+
+    /// A settings section configuring a local ES256 signer over the test
+    /// certificate chain. It serves as `signer` and as `cawg_x509_signer`.
+    static func localSignerSection() throws -> [String: Any] {
+        ["local": ["alg": "es256", "sign_cert": try certsPEM(), "private_key": try privateKeyPEM()]]
+    }
+
+    /// Settings whose signer is the test certificate, for signing with the
+    /// signer on a context. `extra` adds further top-level sections.
+    static func localSignerSettings(adding extra: [String: Any] = [:]) throws -> C2PASettings {
+        var settings: [String: Any] = ["version": 1, "signer": try localSignerSection()]
+        settings.merge(extra) { _, new in new }
+        return try C2PASettings(json: JSONSerialization.data(withJSONObject: settings).utf8Text)
     }
 
     static let invalidCertsPEM = """
@@ -143,13 +173,32 @@ enum Fixtures {
         format: String = "image/jpeg",
         signer: Signer? = nil
     ) throws -> ManifestStore {
+        let signer = try signer ?? self.signer()
+        return try signAndRead(source: source, format: format) { source, destination in
+            try builder.sign(format: format, source: source, destination: destination, signer: signer)
+        }
+    }
+
+    /// Signs a fixture with the signer on `builder`'s context and reads the
+    /// signed copy back.
+    static func signAndReadWithContextSigner(
+        _ builder: Builder,
+        source: String = pexelsJPEG,
+        format: String = "image/jpeg"
+    ) throws -> ManifestStore {
+        try signAndRead(source: source, format: format) { source, destination in
+            try builder.sign(format: format, source: source, destination: destination)
+        }
+    }
+
+    private static func signAndRead(
+        source: String,
+        format: String,
+        sign: (_ source: Stream, _ destination: Stream) throws -> Data
+    ) throws -> ManifestStore {
         let output = tempURL(extension: (source as NSString).pathExtension)
         defer { try? FileManager.default.removeItem(at: output) }
-        try builder.sign(
-            format: format,
-            source: stream(source),
-            destination: Stream(writeTo: output),
-            signer: signer ?? self.signer())
+        _ = try sign(stream(source), Stream(writeTo: output))
         let reader = try Reader(format: format, stream: Stream(readFrom: output))
         return try ManifestStore(json: reader.json())
     }
