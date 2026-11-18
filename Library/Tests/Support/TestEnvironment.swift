@@ -85,19 +85,68 @@ enum TestEnvironment {
             : "Start it with make signing-server-start (make tests-with-server starts and stops it for you)."
     }
 
-    /// Fails the calling test, with the instructions, when the server is down.
+    /// Fails the calling test, with the reason and the instructions, when the
+    /// server is down.
     static func requireSigningServer(sourceLocation: SourceLocation = #_sourceLocation) async throws {
+        let probe = await awaitSigningServer()
         try #require(
-            await signingServerReachable(),
-            "Signing server not reachable at \(signingServerURL). \(signingServerInstructions)",
+            probe == .reachable,
+            "Signing server not reachable at \(signingServerURL): \(probe). \(signingServerInstructions)",
             sourceLocation: sourceLocation)
     }
 
-    static func signingServerReachable() async -> Bool {
+    /// Repeats `probe` until the server answers, nothing is listening, or
+    /// `patience` runs out, and returns the last result.
+    ///
+    /// A parallel run on a simulator can keep one request waiting longer than
+    /// any single timeout worth having, so a server that is required gets more
+    /// than one attempt before the run is failed.
+    static func awaitSigningServer(
+        patience: Duration = .seconds(60),
+        pause: Duration = .seconds(1),
+        probe: () async -> SigningServerProbe = { await probeSigningServer(timeout: 10) }
+    ) async -> SigningServerProbe {
+        let deadline = ContinuousClock.now + patience
+        while true {
+            let result = await probe()
+            guard case .unanswered = result, ContinuousClock.now < deadline else { return result }
+            guard (try? await Task.sleep(for: pause)) != nil else { return result }
+        }
+    }
+
+    /// One request to the server's health endpoint.
+    static func probeSigningServer(timeout: TimeInterval) async -> SigningServerProbe {
         var request = URLRequest(url: signingServerURL.appendingPathComponent("health"))
-        request.timeoutInterval = 5
-        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
-        return (response as? HTTPURLResponse)?.statusCode == 200
+        request.timeoutInterval = timeout
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let status = (response as? HTTPURLResponse)?.statusCode else {
+                return .unanswered("the response was not HTTP")
+            }
+            return status == 200 ? .reachable : .unanswered("HTTP \(status)")
+        } catch let error as URLError where error.code == .cannotConnectToHost {
+            return .notListening(error.localizedDescription)
+        } catch {
+            let error = error as NSError
+            return .unanswered("\(error.localizedDescription) (\(error.domain) \(error.code))")
+        }
+    }
+}
+
+/// How a probe of the signing server's health endpoint ended.
+enum SigningServerProbe: Equatable, CustomStringConvertible {
+    case reachable
+    /// Nothing accepted the connection. Asking again will not change that.
+    case notListening(String)
+    /// No answer in time, or the wrong one. A busy run can cause this, so it
+    /// is worth another attempt.
+    case unanswered(String)
+
+    var description: String {
+        switch self {
+        case .reachable: "reachable"
+        case .notListening(let reason), .unanswered(let reason): reason
+        }
     }
 }
 
@@ -116,7 +165,9 @@ extension Trait where Self == ConditionTrait {
     static var requiresSigningServer: Self {
         .enabled(Comment(rawValue: "Signing server not reachable at \(TestEnvironment.signingServerURL)")) {
             if TestEnvironment.signingServerRequired { return true }
-            return await TestEnvironment.signingServerReachable()
+            // One short attempt: an optional server that is down should skip
+            // its suites promptly, not hold the run up.
+            return await TestEnvironment.probeSigningServer(timeout: 5) == .reachable
         }
     }
 }

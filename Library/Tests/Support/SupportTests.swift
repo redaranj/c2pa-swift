@@ -74,4 +74,34 @@ import Testing
     func signingServerReachableWhenRequired() async throws {
         try await TestEnvironment.requireSigningServer()
     }
+
+    @Test func serverProbeRetriesUntilAnswered() async {
+        var attempts = 0
+        let result = await TestEnvironment.awaitSigningServer(pause: .zero) {
+            attempts += 1
+            return attempts < 3 ? .unanswered("timed out") : .reachable
+        }
+        #expect(result == .reachable)
+        #expect(attempts == 3)
+    }
+
+    @Test func serverProbeStopsWhenNothingListens() async {
+        var attempts = 0
+        let result = await TestEnvironment.awaitSigningServer(pause: .zero) {
+            attempts += 1
+            return .notListening("connection refused")
+        }
+        #expect(result == .notListening("connection refused"))
+        #expect(attempts == 1)
+    }
+
+    @Test func serverProbeGivesUpWhenPatienceRunsOut() async {
+        var attempts = 0
+        let result = await TestEnvironment.awaitSigningServer(patience: .zero, pause: .zero) {
+            attempts += 1
+            return .unanswered("timed out")
+        }
+        #expect(result == .unanswered("timed out"))
+        #expect(attempts == 1)
+    }
 }
