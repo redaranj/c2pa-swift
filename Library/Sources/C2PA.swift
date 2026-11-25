@@ -63,6 +63,9 @@ public enum C2PA {
     /// Streams the source through a context-based ``Builder`` and writes the signed
     /// result to `destination`. The media format is inferred from the source extension.
     ///
+    /// The destination is written only when signing succeeds: a call that throws leaves
+    /// a file already there as it was, and creates none where there was none.
+    ///
     /// - Parameters:
     ///   - source: The URL of the source file to sign.
     ///   - destination: The URL where the signed file will be written.
@@ -84,15 +87,37 @@ public enum C2PA {
         signerInfo: SignerInfo
     ) throws {
         let format = try inferredMIMEType(for: source)
-        let sourceStream = try Stream(readFrom: source)
-        let destStream = try Stream(writeTo: destination)
         let signer = try Signer(info: signerInfo)
         let builder = try Builder(context: C2PAContext(), manifestJSON: manifestJSON)
-        _ = try builder.sign(
-            format: format,
-            source: sourceStream,
-            destination: destStream,
-            signer: signer
+
+        // Signing can fail after the whole asset has been written, so the output is staged on the
+        // destination's volume and only takes the destination's place once it is complete.
+        let fileManager = FileManager.default
+        let staging = try fileManager.url(
+            for: .itemReplacementDirectory,
+            in: .userDomainMask,
+            appropriateFor: destination.deletingLastPathComponent(),
+            create: true
         )
+        defer { try? fileManager.removeItem(at: staging) }
+        let staged = staging.appendingPathComponent(destination.lastPathComponent)
+
+        do {
+            // Scoped so both file handles are closed before the staged file moves.
+            let sourceStream = try Stream(readFrom: source)
+            let stagedStream = try Stream(writeTo: staged)
+            _ = try builder.sign(
+                format: format,
+                source: sourceStream,
+                destination: stagedStream,
+                signer: signer
+            )
+        }
+
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: staged)
+        } else {
+            try fileManager.moveItem(at: staged, to: destination)
+        }
     }
 }
