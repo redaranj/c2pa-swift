@@ -235,12 +235,15 @@ public final class Stream {
                 return n
             },
             s: { offset, mode in
+                let base: Int
                 switch mode {
-                case Start: cursor = max(0, offset)
-                case Current: cursor = max(0, cursor + offset)
-                case End: cursor = max(0, data.count + offset)
+                case Start: base = 0
+                case Current: base = cursor
+                case End: base = data.count
                 default: return -1
                 }
+                guard let position = Stream.position(base, offsetBy: offset) else { return -1 }
+                cursor = position
                 return cursor
             },
             w: nil, f: nil, fileHandleBox: nil
@@ -310,48 +313,8 @@ public extension Stream {
         }
 
         unsafe self.init(streamProvider: .init(
-            r: { buffer, count in
-                let data = (try? fhBox.fh.read(upToCount: count)) ?? Data()
-
-                unsafe data.copyBytes(
-                    to: buffer.assumingMemoryBound(to: UInt8.self),
-                    count: data.count
-                )
-
-                return data.count
-            },
-            s: { offset, mode in
-                do {
-                    let off = Int64(offset)
-                    let newPos: UInt64
-
-                    switch mode {
-                    case Start:
-                        newPos = UInt64(max(0, off))
-
-                    case Current:
-                        let currentOffset = Int64(fhBox.fh.offsetInFile)
-                        let targetOffset = max(0, currentOffset + off)
-
-                        newPos = UInt64(targetOffset)
-
-                    case End:
-                        let end = try fhBox.fh.seekToEnd()
-                        let targetOffset = max(0, Int64(end) + off)
-
-                        newPos = UInt64(targetOffset)
-
-                    default:
-                        return -1
-                    }
-
-                    try fhBox.fh.seek(toOffset: newPos)
-
-                    return Int(newPos) // Return Int as per Seeker typealias
-                } catch {
-                    return -1
-                }
-            },
+            r: unsafe Stream.reader(fhBox.fh),
+            s: Stream.seeker(fhBox.fh),
             w: unsafe writer,
             f: flusher,
             fileHandleBox: fhBox
@@ -360,6 +323,59 @@ public extension Stream {
 }
 
 extension Stream {
+    /// Reads a file handle under the ``Reader`` contract: the byte count on success, 0 at the end of the
+    /// file, -1 on failure.
+    static func reader(_ handle: FileHandle) -> Reader {
+        return { buffer, count in
+            do {
+                guard let data = try handle.read(upToCount: count) else { return 0 }
+
+                unsafe data.copyBytes(
+                    to: buffer.assumingMemoryBound(to: UInt8.self),
+                    count: data.count
+                )
+
+                return data.count
+            } catch {
+                return -1
+            }
+        }
+    }
+
+    /// Seeks a file handle under the ``Seeker`` contract: the new position on success, -1 on failure.
+    static func seeker(_ handle: FileHandle) -> Seeker {
+        return { offset, mode in
+            do {
+                let base: UInt64
+
+                switch mode {
+                case Start: base = 0
+                case Current: base = try handle.offset()
+                case End: base = try handle.seekToEnd()
+                default: return -1
+                }
+
+                guard let base = Int(exactly: base), let target = position(base, offsetBy: offset) else {
+                    return -1
+                }
+
+                try handle.seek(toOffset: UInt64(target))
+
+                return target
+            } catch {
+                return -1
+            }
+        }
+    }
+
+    /// The position `offset` bytes from `base`, no earlier than the start of the stream, or `nil` when it
+    /// does not fit in an `Int`.
+    static func position(_ base: Int, offsetBy offset: Int) -> Int? {
+        let (position, overflow) = base.addingReportingOverflow(offset)
+
+        return overflow ? nil : max(0, position)
+    }
+
     /// Adapts a throwing write to the ``Writer`` contract: the byte count on success, -1 on failure.
     static func writer(_ write: @escaping (Data) throws -> Void) -> Writer {
         return { buffer, count in

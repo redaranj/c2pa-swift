@@ -147,9 +147,9 @@ import Testing
     }
 }
 
-/// Signs into an in-memory destination whose write and flush go through the
-/// same adapters as the file-backed streams, so a failing operation must fail
-/// the signing.
+/// A stream operation that fails must fail the signing or reading it serves.
+/// The destination's write and flush go through the same adapters as the
+/// file-backed streams.
 @Suite struct StreamErrorPropagationTests {
 
     private struct InjectedFailure: Error {}
@@ -172,6 +172,15 @@ import Testing
             return position
         }
 
+        func seek(_ offset: Int, origin: UInt32) -> Int {
+            switch origin {
+            case 0: seek(offset, from: 0)
+            case 1: seek(offset, from: position)
+            case 2: seek(offset, from: data.count)
+            default: -1
+            }
+        }
+
         func write(_ bytes: Data) {
             let end = position + bytes.count
             if end > data.count {
@@ -182,26 +191,36 @@ import Testing
         }
     }
 
+    /// A read-only stream over a fixture whose reads fail once `readable` bytes have been delivered.
+    private func source(_ name: String, failingAfter readable: Int) throws -> Stream {
+        let file = MemoryFile()
+        file.data = try Fixtures.data(name)
+        var readable = readable
+        return try Stream(
+            read: { buffer, count in
+                guard readable > 0 else { return -1 }
+                let delivered = file.read(buffer, min(count, readable))
+                readable -= delivered
+                return delivered
+            },
+            seek: { file.seek($0, origin: $1.rawValue) })
+    }
+
     private func sign(
+        from source: Stream? = nil,
         into destination: MemoryFile,
         write: @escaping (Data) throws -> Void,
         synchronize: @escaping () throws -> Void
     ) throws {
         let stream = try Stream(
             read: destination.read,
-            seek: { offset, origin in
-                switch origin.rawValue {
-                case 0: destination.seek(offset, from: 0)
-                case 1: destination.seek(offset, from: destination.position)
-                case 2: destination.seek(offset, from: destination.data.count)
-                default: -1
-                }
-            },
+            seek: { destination.seek($0, origin: $1.rawValue) },
             write: Stream.writer(write),
             flush: Stream.flusher(synchronize))
         let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON(claimGenerator: "stream_error_test/1.0"))
         try builder.sign(
-            format: "image/jpeg", source: Fixtures.stream(Fixtures.pexelsJPEG), destination: stream, signer: Fixtures.signer())
+            format: "image/jpeg", source: source ?? Fixtures.stream(Fixtures.pexelsJPEG), destination: stream,
+            signer: Fixtures.signer())
     }
 
     @Test func signSucceedsWhenDestinationSucceeds() throws {
@@ -224,5 +243,120 @@ import Testing
             try sign(into: destination, write: destination.write, synchronize: { throw InjectedFailure() })
         }
         #expect(!destination.data.isEmpty, "the writes must succeed for the failure to come from the flush")
+    }
+
+    /// The source fails after the library has read the asset twice and is
+    /// partway through copying it. Reported as the end of the file, that signs
+    /// a truncated asset without an error.
+    @Test func signFailsWhenSourceReadFails() throws {
+        let size = try Fixtures.data(Fixtures.pexelsJPEG).count
+        let destination = MemoryFile()
+        #expect(throws: C2PAError.self) {
+            try sign(
+                from: source(Fixtures.pexelsJPEG, failingAfter: size * 5 / 2), into: destination,
+                write: destination.write, synchronize: {})
+        }
+    }
+
+    /// The source fails three quarters of the way through the asset. Reported
+    /// as the end of the file, that reads as a manifest that fails validation.
+    @Test func readFailsWhenSourceReadFails() throws {
+        let size = try Fixtures.data(Fixtures.adobeJPEG).count
+        let stream = try source(Fixtures.adobeJPEG, failingAfter: size * 3 / 4)
+        #expect(throws: C2PAError.self) { try Reader(format: "image/jpeg", stream: stream) }
+    }
+}
+
+/// Calls the read and seek callbacks of a file-backed stream directly, on
+/// handles the library could not be made to fail on from the outside.
+@Suite struct FileStreamCallbackTests {
+
+    private enum Origin: UInt32 {
+        case start = 0
+        case current = 1
+        case end = 2
+    }
+
+    private func file(containing text: String) throws -> URL {
+        let url = Fixtures.tempURL(extension: "dat")
+        try Data(text.utf8).write(to: url)
+        return url
+    }
+
+    /// Returns what the callback reported and the bytes it delivered.
+    private func read(_ reader: Stream.Reader, count: Int) -> (result: Int, text: String) {
+        var buffer = [UInt8](repeating: 0, count: count)
+        let result = buffer.withUnsafeMutableBytes { reader($0.baseAddress!, count) }
+        return (result, String(bytes: buffer.prefix(max(0, result)), encoding: .utf8) ?? "")
+    }
+
+    private func seek(_ seeker: Stream.Seeker, _ offset: Int, from origin: Origin) -> Int {
+        seeker(offset, .init(rawValue: origin.rawValue))
+    }
+
+    @Test func readDeliversTheBytesThenReportsEndOfFile() throws {
+        let url = try file(containing: "0123456789")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let reader = Stream.reader(try FileHandle(forReadingFrom: url))
+
+        #expect(read(reader, count: 4) == (4, "0123"))
+        #expect(read(reader, count: 16) == (6, "456789"))
+        #expect(read(reader, count: 16) == (0, ""))
+    }
+
+    /// A handle opened for writing cannot be read, so every read fails.
+    @Test func readReportsAFailedReadAsAnError() throws {
+        let url = try file(containing: "0123456789")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let reader = Stream.reader(try FileHandle(forWritingTo: url))
+
+        #expect(read(reader, count: 4).result == -1)
+    }
+
+    @Test func seekReportsThePositionItMovedTo() throws {
+        let url = try file(containing: "0123456789")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let handle = try FileHandle(forReadingFrom: url)
+        let seeker = Stream.seeker(handle)
+
+        #expect(seek(seeker, 4, from: .start) == 4)
+        #expect(seek(seeker, 3, from: .current) == 7)
+        #expect(read(Stream.reader(handle), count: 16) == (3, "789"))
+        #expect(seek(seeker, -2, from: .end) == 8)
+        #expect(seek(seeker, -100, from: .current) == 0, "a position before the start is clamped to the start")
+    }
+
+    /// A pipe has no position to report or move.
+    @Test func seekFailsOnAHandleThatCannotSeek() {
+        let seeker = Stream.seeker(Pipe().fileHandleForReading)
+
+        #expect(seek(seeker, 0, from: .current) == -1)
+        #expect(seek(seeker, 0, from: .start) == -1)
+        #expect(seek(seeker, 0, from: .end) == -1)
+    }
+
+    @Test func seekFailsWhenThePositionCannotBeRepresented() throws {
+        let url = try file(containing: "0123456789")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let seeker = Stream.seeker(try FileHandle(forReadingFrom: url))
+
+        #expect(seek(seeker, 4, from: .start) == 4)
+        #expect(seek(seeker, .max, from: .current) == -1)
+        #expect(seek(seeker, .max, from: .end) == -1)
+    }
+
+    @Test func positionsAreClampedToTheStartAndRejectedOnOverflow() {
+        #expect(Stream.position(4, offsetBy: 3) == 7)
+        #expect(Stream.position(4, offsetBy: -3) == 1)
+        #expect(Stream.position(4, offsetBy: -100) == 0)
+        #expect(Stream.position(4, offsetBy: .max) == nil)
+    }
+
+    @Test func seekRejectsAnUnknownOrigin() throws {
+        let url = try file(containing: "0123456789")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let seeker = Stream.seeker(try FileHandle(forReadingFrom: url))
+
+        #expect(seeker(0, .init(rawValue: 7)) == -1)
     }
 }
