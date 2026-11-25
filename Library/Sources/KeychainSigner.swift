@@ -28,8 +28,9 @@ extension Signer {
     ///   - tsa: Optional URL of a timestamp authority.
     ///   - keychainKeyTag: The keychain tag identifying the private key.
     ///
-    /// - Throws: ``C2PAError`` if the key cannot be found, doesn't support the algorithm,
-    ///   or if signing fails. Also throws for Ed25519 which is not supported by the keychain.
+    /// - Throws: ``C2PAError`` if the key cannot be found or cannot sign with the algorithm,
+    ///   which for an ECDSA algorithm includes a key on another curve. Also throws for Ed25519,
+    ///   which is not supported by the keychain.
     ///
     /// ## Example
     ///
@@ -63,44 +64,25 @@ extension Signer {
         tsa: URL? = nil,
         keychainKeyTag: String
     ) throws {
-        guard algorithm.secKeyAlgo != nil else {
-            throw C2PAError.ed25519NotSupported
-        }
+        // Fails here, not at the first signature, when the tag has no key or the key cannot
+        // serve the algorithm.
+        _ = try Signer.keychainKey(tag: keychainKeyTag, signingWith: algorithm)
 
         try self.init(
             algorithm: algorithm,
             certificateChainPEM: certificateChainPEM,
             tsa: tsa
         ) { data in
-            // Looked up here rather than captured, so the @Sendable closure holds only the
-            // Sendable algorithm, not a SecKeyAlgorithm whose Sendable conformance varies by
-            // SDK. The guard above has already ruled out an algorithm without one.
-            let secAlgorithm = algorithm.secKeyAlgo!
-            let query: [String: Any] = [
-                kSecClass as String: kSecClassKey,
-                kSecAttrApplicationTag as String: keychainKeyTag,
-                kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
-                kSecReturnRef as String: true
-            ]
-
-            var item: CFTypeRef?
-            let status = unsafe SecItemCopyMatching(query as CFDictionary, &item)
-
-            guard status == errSecSuccess,
-                let privateKey = item as! SecKey?
-            else {
-                throw C2PAError.keySearchFailed(keychainKeyTag, status)
-            }
-
-            guard SecKeyIsAlgorithmSupported(privateKey, .sign, secAlgorithm) else {
-                throw C2PAError.unsupportedAlgorithm(algorithm)
-            }
+            // Looked up again here rather than captured, so the @Sendable closure holds only
+            // Sendable values, not a SecKey or SecKeyAlgorithm whose Sendable conformance
+            // varies by SDK. The lookup has already ruled out an algorithm without one.
+            let privateKey = try Signer.keychainKey(tag: keychainKeyTag, signingWith: algorithm)
 
             var error: Unmanaged<CFError>?
             guard
                 let signature = unsafe SecKeyCreateSignature(
                     privateKey,
-                    secAlgorithm,
+                    algorithm.secKeyAlgo!,
                     data as CFData,
                     &error)
             else {
@@ -108,6 +90,58 @@ extension Signer {
             }
 
             return signature as Data
+        }
+    }
+
+    /// Finds the private key stored under `tag` and checks that it can sign with `algorithm`.
+    ///
+    /// `SecKeyIsAlgorithmSupported` only looks at the kind of key, so an elliptic curve key of
+    /// any size passes for every ECDSA digest. Each ECDSA algorithm names one curve, so the size
+    /// of the key is compared as well.
+    private static func keychainKey(tag: String, signingWith algorithm: SigningAlgorithm) throws(C2PAError) -> SecKey {
+        guard let secAlgorithm = algorithm.secKeyAlgo else {
+            throw C2PAError.ed25519NotSupported
+        }
+
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tag,
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecReturnRef as String: true
+        ]
+
+        var item: CFTypeRef?
+        let status = unsafe SecItemCopyMatching(query as CFDictionary, &item)
+
+        guard status == errSecSuccess,
+            let privateKey = item as! SecKey?
+        else {
+            throw C2PAError.keySearchFailed(tag, status)
+        }
+
+        guard SecKeyIsAlgorithmSupported(privateKey, .sign, secAlgorithm) else {
+            throw C2PAError.unsupportedAlgorithm(algorithm)
+        }
+
+        if let curveSize = algorithm.curveSizeInBits {
+            let attributes = SecKeyCopyAttributes(privateKey) as? [String: Any]
+            guard attributes?[kSecAttrKeySizeInBits as String] as? Int == curveSize else {
+                throw C2PAError.unsupportedAlgorithm(algorithm)
+            }
+        }
+
+        return privateKey
+    }
+}
+
+extension SigningAlgorithm {
+    /// The size in bits of the elliptic curve an ECDSA algorithm signs with, `nil` for the others.
+    fileprivate var curveSizeInBits: Int? {
+        switch self {
+        case .es256: return 256
+        case .es384: return 384
+        case .es512: return 521
+        case .ps256, .ps384, .ps512, .ed25519: return nil
         }
     }
 }

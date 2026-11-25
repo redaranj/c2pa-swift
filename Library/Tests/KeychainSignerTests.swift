@@ -29,21 +29,18 @@ import Testing
         }
     }
 
-    /// The doc comment promises an init-time error for a missing key; today the
-    /// lookup only happens when signing.
+    /// A tag with no key under it is refused when the signer is created, not when it first signs.
     @Test func nonExistentKeyFailure() throws {
         let tag = Fixtures.uniqueKeyTag("missing")
         let certs = try Fixtures.certsPEM()
-        withKnownIssue("Keychain signer defers the key lookup to signing") {
-            #expect(throws: C2PAError.self) {
-                try Signer(algorithm: .es256, certificateChainPEM: certs, tsa: nil, keychainKeyTag: tag)
-            }
+        let error = #expect(throws: C2PAError.self) {
+            try Signer(algorithm: .es256, certificateChainPEM: certs, tsa: nil, keychainKeyTag: tag)
         }
-        let signer = try Signer(algorithm: .es256, certificateChainPEM: certs, tsa: nil, keychainKeyTag: tag)
-        let builder = try Builder(manifestJSON: Fixtures.createdManifestJSON())
-        #expect(throws: C2PAError.self, "signing with a missing key") {
-            try Fixtures.signAndRead(builder, signer: signer)
+        guard case .keySearchFailed(let searched, _, _) = error else {
+            Issue.record("expected .keySearchFailed, got \(String(describing: error))")
+            return
         }
+        #expect(searched == tag)
     }
 
     /// Suites that create persistent keys: serialized, and only where a
@@ -94,25 +91,20 @@ import Testing
             #expect(store.validationState == "Valid", "validation status: \(store.validationCodes)")
         }
 
-        /// A P-256 key cannot serve these algorithms. The doc comment promises an
-        /// init-time error; today the key is only checked when signing, and the
-        /// ES384/ES512 digests even pass that check, so signing must at least
-        /// fail its own verification.
+        /// A P-256 key cannot serve these algorithms, so creating the signer fails. That includes
+        /// ES384 and ES512, whose digests the keychain would sign with a P-256 key if asked.
         @Test(arguments: [SigningAlgorithm.es384, .es512, .ps256, .ps384, .ps512])
         func algorithmMismatchDetection(algorithm: SigningAlgorithm) throws {
             let (tag, chain) = try keyWithChain("mismatch")
             defer { TestKeychain.deleteKey(tag: tag) }
-            withKnownIssue("Keychain signer defers the algorithm check to signing") {
-                #expect(throws: C2PAError.self) {
-                    try Signer(algorithm: algorithm, certificateChainPEM: chain, tsa: nil, keychainKeyTag: tag)
-                }
+            let error = #expect(throws: C2PAError.self) {
+                try Signer(algorithm: algorithm, certificateChainPEM: chain, tsa: nil, keychainKeyTag: tag)
             }
-            let signer = try Signer(algorithm: algorithm, certificateChainPEM: chain, tsa: nil, keychainKeyTag: tag)
-            let settings = try C2PASettings(json: #"{"version": 1, "verify": {"verify_after_sign": true}}"#)
-            let builder = try Builder(context: C2PAContext(settings: settings), manifestJSON: Fixtures.createdManifestJSON())
-            #expect(throws: C2PAError.self, "a \(algorithm) signature from a P-256 key was accepted") {
-                try Fixtures.signAndRead(builder, signer: signer)
+            guard case .unsupportedAlgorithm(let refused, _) = error else {
+                Issue.record("expected .unsupportedAlgorithm, got \(String(describing: error))")
+                return
             }
+            #expect(refused == algorithm)
         }
 
         /// A key created under a unique tag is gone once its test's defer runs.
