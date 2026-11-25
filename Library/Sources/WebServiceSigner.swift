@@ -87,8 +87,9 @@ public final class WebServiceSigner: Sendable {
     ///
     /// - Returns: A configured ``Signer`` instance ready for use.
     ///
-    /// - Throws: ``SignerError`` if the configuration cannot be fetched, is invalid,
-    ///   or if the signing service is unavailable.
+    /// - Throws: ``SignerError`` if the endpoint is not an HTTP(S) URL, the signing service
+    ///   cannot be reached, or its configuration cannot be fetched or is invalid, or
+    ///   ``C2PAError`` if no signer can be created from the configuration.
     public func createSigner() async throws -> Signer {
         let configuration = try await fetchConfiguration()
         let signingAlgorithm = try mapAlgorithm(configuration.algorithm)
@@ -114,7 +115,11 @@ public final class WebServiceSigner: Sendable {
         return algorithm
     }
 
-    private func fetchConfiguration() async throws -> SignerConfiguration {
+    private func fetchConfiguration() async throws(SignerError) -> SignerConfiguration {
+        guard let scheme = configurationEndpoint.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
+            throw SignerError.invalidURL
+        }
+
         var request = URLRequest(url: configurationEndpoint)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -129,7 +134,13 @@ public final class WebServiceSigner: Sendable {
             request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await urlSession.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch {
+            throw SignerError.serviceUnavailable(error)
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw SignerError.invalidResponse
@@ -139,7 +150,11 @@ public final class WebServiceSigner: Sendable {
             throw SignerError.httpError(statusCode: httpResponse.statusCode)
         }
 
-        return try C2PAJson.decode(SignerConfiguration.self, from: data)
+        do {
+            return try C2PAJson.decode(SignerConfiguration.self, from: data)
+        } catch {
+            throw SignerError.invalidResponse
+        }
     }
 
     private func signData(_ data: Data, signing: URL) async throws -> Data {
@@ -238,11 +253,16 @@ private struct SignResponse: Codable {
 
 /// Errors that can occur during web service signing operations.
 public enum SignerError: LocalizedError {
-    /// The provided URL is invalid or malformed.
+    /// The endpoint is not an HTTP or HTTPS URL.
     case invalidURL
 
     /// The server returned an invalid or unexpected response.
     case invalidResponse
+
+    /// The signing service could not be reached.
+    ///
+    /// - Parameter error: The underlying transport error, usually a `URLError`.
+    case serviceUnavailable(_ error: any Error)
 
     /// An HTTP error occurred.
     ///
@@ -273,6 +293,8 @@ public enum SignerError: LocalizedError {
             return "Invalid URL"
         case .invalidResponse:
             return "Invalid response from server"
+        case .serviceUnavailable(let error):
+            return "Signing service unavailable: \(error.localizedDescription)"
         case .httpError(let statusCode):
             return "HTTP error: \(statusCode)"
         case .unsupportedAlgorithm(let algorithm):

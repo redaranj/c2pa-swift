@@ -137,16 +137,18 @@ private final class CallRecorder: @unchecked Sendable {
         #expect(request.value(forHTTPHeaderField: "X-Custom-Header") == "test-value")
     }
 
-    @Test func createSignerInvalidURL() async throws {
-        let signer = WebServiceSigner(configurationEndpoint: try #require(URL(string: "not-a-valid-url")))
-        await #expect(throws: (any Error).self) { try await signer.createSigner() }
-        await withKnownIssue("createSigner lets URLError escape instead of SignerError.invalidURL") {
-            let error = await #expect(throws: SignerError.self) { try await signer.createSigner() }
-            guard case .invalidURL = error else {
-                Issue.record("expected .invalidURL, got \(String(describing: error))")
-                return
-            }
+    /// An endpoint that is not an HTTP(S) URL is refused before any request is made.
+    @Test(arguments: ["not-a-valid-url", "ftp://example.com/config", "file:///tmp/config.json"])
+    func createSignerInvalidURL(endpoint: String) async throws {
+        let session = RecordingURLProtocol.session(answering: .status(200))
+        defer { session.invalidateAndCancel() }
+        let signer = WebServiceSigner(configurationEndpoint: try #require(URL(string: endpoint)), urlSession: session)
+        let error = await #expect(throws: SignerError.self) { try await signer.createSigner() }
+        guard case .invalidURL = error else {
+            Issue.record("expected .invalidURL, got \(String(describing: error))")
+            return
         }
+        #expect(RecordingURLProtocol.state.recorded.isEmpty)
     }
 
     /// The connection is refused by a stub, so the test does not depend on
@@ -156,9 +158,24 @@ private final class CallRecorder: @unchecked Sendable {
         defer { session.invalidateAndCancel() }
         let signer = WebServiceSigner(
             configurationEndpoint: try #require(URL(string: "https://example.com/config")), urlSession: session)
-        await #expect(throws: (any Error).self) { try await signer.createSigner() }
-        await withKnownIssue("createSigner lets URLError escape for an unreachable service instead of SignerError") {
-            await #expect(throws: SignerError.self) { try await signer.createSigner() }
+        let error = await #expect(throws: SignerError.self) { try await signer.createSigner() }
+        guard case .serviceUnavailable(let underlying) = error else {
+            Issue.record("expected .serviceUnavailable, got \(String(describing: error))")
+            return
+        }
+        #expect((underlying as? URLError)?.code == .cannotConnectToHost)
+    }
+
+    /// A 200 answer whose body is not a configuration is an invalid response, not a decoding error.
+    @Test func createSignerUnreadableConfiguration() async throws {
+        let session = RecordingURLProtocol.session(answering: .status(200))
+        defer { session.invalidateAndCancel() }
+        let signer = WebServiceSigner(
+            configurationEndpoint: try #require(URL(string: "https://example.com/config")), urlSession: session)
+        let error = await #expect(throws: SignerError.self) { try await signer.createSigner() }
+        guard case .invalidResponse = error else {
+            Issue.record("expected .invalidResponse, got \(String(describing: error))")
+            return
         }
     }
 
