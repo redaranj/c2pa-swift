@@ -78,6 +78,29 @@ import Testing
         #expect(store.validationState == "Valid")
     }
 
+    @Test func signFileReplacesAnExistingDestination() throws {
+        let destination = try existingDestination()
+        defer { try? FileManager.default.removeItem(at: destination) }
+        try C2PA.signFile(
+            source: Fixtures.url(Fixtures.pexelsJPEG),
+            destination: destination,
+            manifestJSON: Fixtures.createdManifestJSON(),
+            signerInfo: Fixtures.signerInfo())
+        let store = try ManifestStore(json: C2PA.readFile(at: destination))
+        #expect(store.validationState == "Valid")
+    }
+
+    /// What a destination holds before a call that is expected to fail.
+    private static let existingContents = Data("what was here before signing".utf8)
+
+    private func existingDestination() throws -> URL {
+        let destination = Fixtures.tempURL(extension: "jpg")
+        try Self.existingContents.write(to: destination)
+        return destination
+    }
+
+    /// A manifest that is refused leaves the destination as it was. The first three are refused when
+    /// the builder reads them; the last only once the whole signed asset has been written out.
     @Test(arguments: [
         "",
         "this is definitely not json",
@@ -85,12 +108,38 @@ import Testing
         #"{"foo": "bar"}"#
     ])
     func signFileWithInvalidManifest(manifestJSON: String) throws {
-        let destination = Fixtures.tempURL(extension: "jpg")
+        let destination = try existingDestination()
         defer { try? FileManager.default.removeItem(at: destination) }
         let source = try Fixtures.url(Fixtures.pexelsJPEG)
         let signerInfo = try Fixtures.signerInfo()
         #expect(throws: C2PAError.self) {
             try C2PA.signFile(source: source, destination: destination, manifestJSON: manifestJSON, signerInfo: signerInfo)
         }
+        #expect(try Data(contentsOf: destination) == Self.existingContents)
+    }
+
+    @Test func signFileWithInvalidCredentials() throws {
+        let destination = try existingDestination()
+        defer { try? FileManager.default.removeItem(at: destination) }
+        let source = try Fixtures.url(Fixtures.pexelsJPEG)
+        let signerInfo = SignerInfo(
+            algorithm: .es256, certificatePEM: try Fixtures.certsPEM(), privateKeyPEM: Fixtures.invalidPrivateKeyPEM)
+        #expect(throws: C2PAError.self) {
+            try C2PA.signFile(
+                source: source, destination: destination, manifestJSON: Fixtures.createdManifestJSON(), signerInfo: signerInfo)
+        }
+        #expect(try Data(contentsOf: destination) == Self.existingContents)
+    }
+
+    /// A failed call does not leave a file where there was none.
+    @Test func signFileCreatesNoDestinationWhenItFails() throws {
+        let destination = Fixtures.tempURL(extension: "jpg")
+        defer { try? FileManager.default.removeItem(at: destination) }
+        let source = try Fixtures.url(Fixtures.pexelsJPEG)
+        let signerInfo = try Fixtures.signerInfo()
+        #expect(throws: C2PAError.self) {
+            try C2PA.signFile(source: source, destination: destination, manifestJSON: #"{"foo": "bar"}"#, signerInfo: signerInfo)
+        }
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
     }
 }
