@@ -144,10 +144,8 @@ private final class CallRecorder: @unchecked Sendable {
         #expect(pem.hasSuffix("-----END PUBLIC KEY-----"))
 
         let expected = try #require(SecKeyCopyPublicKey(key).flatMap { SecKeyCopyExternalRepresentation($0, nil) as Data? })
-        withKnownIssue("exportPublicKeyPEM labels a raw EC point as PUBLIC KEY instead of an SPKI") {
-            let parsed = try P256.Signing.PublicKey(pemRepresentation: pem)
-            #expect(parsed.x963Representation == expected)
-        }
+        let parsed = try P256.Signing.PublicKey(pemRepresentation: pem)
+        #expect(parsed.x963Representation == expected)
     }
 
     @Test func exportPublicKeyPEMNonExistentKey() {
