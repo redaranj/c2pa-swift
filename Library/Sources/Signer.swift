@@ -12,6 +12,7 @@
 //
 
 import C2PAC
+import Crypto
 import Foundation
 
 /// A cryptographic signer for creating C2PA signatures.
@@ -366,7 +367,8 @@ extension Signer {
     ///
     /// - Parameter keyTag: The keychain tag identifying the private key.
     ///
-    /// - Returns: The public key in PEM format.
+    /// - Returns: The public key as a PEM-encoded SubjectPublicKeyInfo, the form a
+    ///   `PUBLIC KEY` block holds and that OpenSSL and CryptoKit read.
     ///
     /// - Throws: ``C2PAError`` if the key cannot be found or exported.
     ///
@@ -406,9 +408,21 @@ extension Signer {
             throw unsafe C2PAError.publicKeyExportFailed(error?.takeRetainedValue())
         }
 
-        let base64 = publicKeyData.base64EncodedString(options: [
-            .lineLength64Characters, .endLineWithLineFeed
-        ])
-        return "-----BEGIN PUBLIC KEY-----\n\(base64)\n-----END PUBLIC KEY-----"
+        // The keychain hands back the bare curve point. A `PUBLIC KEY` block holds a
+        // SubjectPublicKeyInfo, which also names the curve, so the point is wrapped in one.
+        // Its length says which curve it is on.
+        let encode: (Data) throws -> String
+        switch publicKeyData.count {
+        case 65: encode = { try P256.Signing.PublicKey(x963Representation: $0).pemRepresentation }
+        case 97: encode = { try P384.Signing.PublicKey(x963Representation: $0).pemRepresentation }
+        case 133: encode = { try P521.Signing.PublicKey(x963Representation: $0).pemRepresentation }
+        default: throw C2PAError.publicKeyExportFailed()
+        }
+
+        do {
+            return try encode(publicKeyData)
+        } catch {
+            throw C2PAError.publicKeyExportFailed(error)
+        }
     }
 }
