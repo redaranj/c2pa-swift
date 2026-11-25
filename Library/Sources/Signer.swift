@@ -127,6 +127,12 @@ public final class Signer {
         algorithm: SigningAlgorithm,
         tsa: URL? = nil
     ) throws(C2PAError) {
+        // The native call reads a chain with no PEM block as an empty chain and creates a
+        // signer that can only fail later, when it signs.
+        guard Signer.hasPEMBlock(certsPEM) else {
+            throw C2PAError.api("The certificate chain contains no PEM-encoded certificate")
+        }
+
         // The null check sits outside the closure because `String.withCString` erases the
         // type of an error thrown inside it.
         let raw = unsafe withSignerInfo(
@@ -143,6 +149,15 @@ public final class Signer {
             return unsafe c2pa_signer_from_info(&info)
         }
         unsafe self.init(ptr: try guardNotNull(raw))
+    }
+
+    /// Whether the native library will find a PEM block in `chain`: a line that starts with a
+    /// `BEGIN` marker, with escaped newlines read as real ones.
+    static func hasPEMBlock(_ chain: String) -> Bool {
+        chain.replacingOccurrences(of: "\\n", with: "\n")
+            .utf8
+            .split(separator: UInt8(ascii: "\n"))
+            .contains { $0.starts(with: "-----BEGIN ".utf8) }
     }
 
     /// Creates a signer from a ``SignerInfo`` struct.
