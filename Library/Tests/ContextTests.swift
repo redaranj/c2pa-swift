@@ -210,7 +210,8 @@ private final class StubURLProtocol: URLProtocol {
         })
         _ = try signThroughContext(context)
         let observed = recorder.recorded
-        #expect(!observed.contains(.unknown), "a phase did not map to a known case, so the native enum has drifted")
+        let unknown = observed.filter { if case .unknown = $0 { true } else { false } }
+        #expect(unknown.isEmpty, "phases without a case, so the native enum has drifted: \(unknown)")
         #expect(observed.contains(.hashing) || observed.contains(.signing), "observed \(observed)")
     }
 

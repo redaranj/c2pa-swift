@@ -15,13 +15,14 @@ import C2PAC
 import Foundation
 
 /// A phase of a C2PA signing or reading operation. Maps the native `C2paProgressPhase`.
-public enum ProgressPhase: Sendable {
+public enum ProgressPhase: Sendable, Hashable {
     case reading, verifyingManifest, verifyingSignature, verifyingIngredient,
          verifyingAssetHash, addingIngredient, thumbnail, hashing, signing,
          embedding, fetchingRemoteManifest, writing, fetchingOCSP, fetchingTimestamp
 
-    /// A phase value not known to this version of the wrapper.
-    case unknown
+    /// A phase not known to this version of the wrapper, with its native
+    /// `C2paProgressPhase` value. The value says which phase a newer SDK reported.
+    case unknown(UInt32)
 
     init(_ phase: C2paProgressPhase) {
         switch phase {
@@ -39,7 +40,7 @@ public enum ProgressPhase: Sendable {
         case Writing: self = .writing
         case FetchingOCSP: self = .fetchingOCSP
         case FetchingTimestamp: self = .fetchingTimestamp
-        default: self = .unknown
+        default: self = .unknown(phase.rawValue)
         }
     }
 }
@@ -50,10 +51,33 @@ public struct ProgressUpdate: Sendable {
     public let phase: ProgressPhase
 
     /// Monotonically increasing within a phase (starts at 1); rising values indicate liveness.
-    public let step: UInt32
+    public let step: Int
 
     /// `0` = indeterminate, `1` = single-shot, `> 1` = determinate (`step` of `total`).
-    public let total: UInt32
+    public let total: Int
+
+    /// How far through the phase the operation is, from 0 to 1, or `nil` when the phase gives
+    /// no total to measure against: an indeterminate or a single-shot phase.
+    public var fractionCompleted: Double? {
+        guard total > 1 else { return nil }
+        return min(1, max(0, Double(step) / Double(total)))
+    }
+
+    /// Creates a progress update.
+    ///
+    /// The SDK creates the updates it delivers. This is for code that tests a progress
+    /// observer by handing it updates of its own.
+    ///
+    /// - Parameters:
+    ///   - phase: The operation phase.
+    ///   - step: The step within the phase, starting at 1.
+    ///   - total: `0` for an indeterminate phase, `1` for a single-shot phase, otherwise the
+    ///     number of steps in the phase.
+    public init(phase: ProgressPhase, step: Int, total: Int) {
+        self.phase = phase
+        self.step = step
+        self.total = total
+    }
 }
 
 /// What a progress observer wants the operation to do next.
@@ -83,6 +107,23 @@ public struct HTTPRequest: Sendable {
 
     /// The request body, if any.
     public let body: Data?
+
+    /// Creates a request.
+    ///
+    /// The SDK creates the requests it asks a resolver for. This is for code that tests a
+    /// resolver by handing it requests of its own.
+    ///
+    /// - Parameters:
+    ///   - url: The request URL.
+    ///   - method: The HTTP method (e.g. `"GET"`).
+    ///   - headers: Request headers.
+    ///   - body: The request body, if any.
+    public init(url: URL, method: String, headers: [String: String] = [:], body: Data? = nil) {
+        self.url = url
+        self.method = method
+        self.headers = headers
+        self.body = body
+    }
 }
 
 /// The HTTP response a resolver returns.
@@ -131,7 +172,7 @@ private let resolverFailed: Int32 = 1
 private let progressTrampoline: ProgressCCallback = { context, phase, step, total in
     guard let context = unsafe context else { return progressContinue }
     let box = unsafe Unmanaged<ProgressCallbackBox>.fromOpaque(context).takeUnretainedValue()
-    let update = ProgressUpdate(phase: ProgressPhase(phase), step: step, total: total)
+    let update = ProgressUpdate(phase: ProgressPhase(phase), step: Int(step), total: Int(total))
     switch box.onProgress(update) {
     case .continue: return progressContinue
     case .cancel: return progressCancel
