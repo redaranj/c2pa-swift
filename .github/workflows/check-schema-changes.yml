@@ -1,153 +1,183 @@
 name: Check C2PA schema changes
 
+# Compares the c2pa-rs schemas this repository checks its models against (the
+# copies in Library/Tests/Resources) with the schemas of the latest stable
+# c2pa-rs release, and keeps one schema-change issue open for as long as they
+# differ.
+#
+# The copies are compared as the release stamped in them, not as C2PA_VERSION.
+# The pin can move without them: the stable tracker's promotion pull request
+# changes only the pin, and the conformance tests still pass against the old
+# copies. Going by the pin would then report that nothing is left to do.
+
 on:
   schedule:
     - cron: "30 */6 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Compare and print the report, but do not touch issues."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+# Two runs at once could each open an issue.
+concurrency:
+  group: check-schema-changes
+  cancel-in-progress: false
 
 jobs:
   check-schema:
+    name: Check Schema Changes
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      DRY_RUN: ${{ inputs.dry_run }}
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust toolchain
+      - name: Resolve Checked-In and Latest Releases
+        id: releases
+        run: |
+          set -euo pipefail
+
+          pinned="$(sed -n 's/^C2PA_VERSION[[:space:]]*=[[:space:]]*//p' Configurations/Base.xcconfig | tr -d '[:space:]')"
+          if [ -z "$pinned" ]; then
+            echo "C2PA_VERSION not found in Configurations/Base.xcconfig" >&2
+            exit 1
+          fi
+
+          # Fails when the copies do not all carry the same release stamp.
+          checked_in="$(.github/scripts/schema-drift.sh --release Library/Tests/Resources)"
+
+          # A failed fetch, or a list with no stable release in it, fails the
+          # run here. It must not read as "nothing has changed" and close the
+          # issue below.
+          gh api "repos/contentauth/c2pa-rs/releases?per_page=100" --paginate \
+            > "$RUNNER_TEMP/releases.json"
+          latest="$(.github/scripts/resolve-c2pa-version.sh --mode stable < "$RUNNER_TEMP/releases.json")"
+
+          # There is something to compare unless the copies come from that
+          # release, or from one ahead of it, as a release candidate of the
+          # next version is. Ordered by a zero-padded key, as the resolver
+          # does, and not by sort -V.
+          key() { printf '%s\n' "${1#v}" | awk -F'[.-]' '{ printf "%05d%05d%05d", $1, $2, $3 }'; }
+          compare=true
+          if [ "$latest" = "$checked_in" ] || [[ "$(key "$latest")" < "$(key "$checked_in")" ]]; then
+            compare=false
+          fi
+
+          echo "Checked-in schemas: $checked_in. Pinned: $pinned. Latest stable: $latest. Compare: $compare."
+          {
+            echo "checked_in=$checked_in"
+            echo "pinned=$pinned"
+            echo "latest=$latest"
+            echo "compare=$compare"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust Toolchain
+        if: steps.releases.outputs.compare == 'true'
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Get current and previous c2pa-rs tags
-        id: get_tags
+      - name: Export Latest Schemas
+        if: steps.releases.outputs.compare == 'true'
+        env:
+          C2PA_SCHEMA_VERSION: ${{ steps.releases.outputs.latest }}
         run: |
-          TAGS=$(curl -s "https://api.github.com/repos/contentauth/c2pa-rs/releases" | \
-            jq -r '.[].tag_name | select(test("^c2pa-v"))' | \
-            head -2)
-          CURRENT_TAG=$(echo "$TAGS" | head -1)
-          PREVIOUS_TAG=$(echo "$TAGS" | tail -1)
-          if [ -z "$CURRENT_TAG" ] || [ -z "$PREVIOUS_TAG" ]; then
-            echo "Could not find two consecutive c2pa release tags"
-            exit 1
-          fi
-          if [ "$CURRENT_TAG" = "$PREVIOUS_TAG" ]; then
-            echo "Only one tag found, nothing to compare"
-            exit 1
-          fi
-          echo "current_tag=$CURRENT_TAG" >> $GITHUB_OUTPUT
-          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          C2PA_SCHEMA_OUTPUT_DIR="$RUNNER_TEMP/latest-schemas" bash .github/scripts/update-schemas.sh
 
-      - name: Clone c2pa-rs
-        run: |
-          git clone https://github.com/contentauth/c2pa-rs.git /tmp/c2pa-rs
-          cd /tmp/c2pa-rs
-          git fetch --tags
-
-      - name: Generate schemas for both tags
-        run: |
-          for TAG_VAR in current previous; do
-            if [ "$TAG_VAR" = "current" ]; then
-              TAG="${{ steps.get_tags.outputs.current_tag }}"
-            else
-              TAG="${{ steps.get_tags.outputs.previous_tag }}"
-            fi
-            cd /tmp/c2pa-rs
-            git checkout "$TAG"
-            cargo run -p export_schema --features c2pa/rust_native_crypto 2>/dev/null || \
-              cargo run -p export_schema 2>/dev/null
-            mkdir -p "/tmp/schemas-$TAG_VAR"
-            cp target/schema/*.schema.json "/tmp/schemas-$TAG_VAR/"
-          done
-
-      - name: Compare schemas
+      - name: Compare Schemas
         id: compare
+        env:
+          COMPARE: ${{ steps.releases.outputs.compare }}
         run: |
-          CHANGES=""
-          HAS_CHANGES=false
+          set -euo pipefail
 
-          for schema in /tmp/schemas-current/*.schema.json; do
-            NAME=$(basename "$schema")
-            PREV="/tmp/schemas-previous/$NAME"
-
-            if [ ! -f "$PREV" ]; then
-              CHANGES="${CHANGES}- **${NAME}**: New schema\n"
-              HAS_CHANGES=true
-              continue
-            fi
-
-            DIFF=$(diff \
-              <(python3 -c "import json,sys; json.dump(json.load(open('$PREV')),sys.stdout,sort_keys=True,indent=2)") \
-              <(python3 -c "import json,sys; json.dump(json.load(open('$schema')),sys.stdout,sort_keys=True,indent=2)") \
-              || true)
-
-            if [ -n "$DIFF" ]; then
-              ADDED=$(echo "$DIFF" | grep -c '^>' || true)
-              REMOVED=$(echo "$DIFF" | grep -c '^<' || true)
-              CHANGES="${CHANGES}- **${NAME}**: ${ADDED} additions, ${REMOVED} removals\n"
-              HAS_CHANGES=true
-            fi
-          done
-
-          for schema in /tmp/schemas-previous/*.schema.json; do
-            NAME=$(basename "$schema")
-            if [ ! -f "/tmp/schemas-current/$NAME" ]; then
-              CHANGES="${CHANGES}- **${NAME}**: Schema removed\n"
-              HAS_CHANGES=true
-            fi
-          done
-
-          echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
-          if [ "$HAS_CHANGES" = true ]; then
-            echo "changes<<EOF" >> $GITHUB_OUTPUT
-            echo -e "$CHANGES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+          report="$RUNNER_TEMP/schema-report.md"
+          : > "$report"
+          if [ "$COMPARE" = true ]; then
+            .github/scripts/schema-drift.sh Library/Tests/Resources "$RUNNER_TEMP/latest-schemas" > "$report"
           fi
 
-      - name: Ensure schema-change label exists
-        if: steps.compare.outputs.has_changes == 'true'
-        run: |
-          gh label create "schema-change" \
-            --description "Upstream c2pa-rs JSON schema has changed" \
-            --color "D93F0B" \
-            2>/dev/null || true
+          if [ -s "$report" ]; then
+            cat "$report"
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "The schemas match."
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open or Update Schema Change Issue
+        if: steps.compare.outputs.drift == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check for existing open issue
-        if: steps.compare.outputs.has_changes == 'true'
-        id: existing_issue
+          CHECKED_IN: ${{ steps.releases.outputs.checked_in }}
+          PINNED: ${{ steps.releases.outputs.pinned }}
+          LATEST: ${{ steps.releases.outputs.latest }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/check-schema-changes.yml
         run: |
-          EXISTING=$(gh issue list \
-            --label "schema-change" \
-            --state open \
-            --json number \
-            --jq '.[0].number // empty')
-          echo "number=$EXISTING" >> $GITHUB_OUTPUT
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          set -euo pipefail
 
-      - name: File issue for schema changes
-        if: steps.compare.outputs.has_changes == 'true' && steps.existing_issue.outputs.number == ''
+          body="$RUNNER_TEMP/issue-body.md"
+          {
+            cat <<EOF
+          The c2pa-rs JSON schemas have changed since the release the models in this repository were last checked against.
+
+          | | Release |
+          |---|---|
+          | Checked-in schemas (\`Library/Tests/Resources\`) | \`${CHECKED_IN}\` |
+          | Pinned (\`C2PA_VERSION\`) | \`${PINNED}\` |
+          | Latest stable | \`${LATEST}\` |
+
+          [Compare the two releases upstream](https://github.com/contentauth/c2pa-rs/compare/c2pa-${CHECKED_IN}...c2pa-${LATEST})
+
+          ## What changed
+
+          EOF
+            cat "$RUNNER_TEMP/schema-report.md"
+            cat <<EOF
+
+          ## What to do
+
+          1. Set \`C2PA_VERSION\` in \`Configurations/Base.xcconfig\` to \`${LATEST}\`, if it is not there already. The stable tracker's promotion pull request makes this change, and nothing else.
+          2. Run \`make update-schemas\` to regenerate the copies in \`Library/Tests/Resources\`.
+          3. Run \`make test-library\`. \`SettingsSchemaConformanceTests\` and \`ManifestSchemaConformanceTests\` name each definition, key, value or enumeration case that no longer matches.
+          4. Update the models until both suites pass.
+
+          | Schema | Swift sources |
+          |---|---|
+          | \`Settings.schema.json\` | \`Library/Sources/SettingsDefinition.swift\` |
+          | \`ManifestDefinition.schema.json\` | \`Library/Sources/Manifest/\` |
+          | \`Builder.schema.json\`, \`Reader.schema.json\` | The same manifest models. \`ManifestSchemaConformanceTests\` checks the definitions these two share with \`ManifestDefinition.schema.json\` and lists what each adds. |
+
+          ---
+
+          This issue is kept current by the [Check C2PA schema changes](${WORKFLOW_URL}) workflow. It is rewritten when the checked-in schemas or the latest release change, and closed when the two match again.
+          EOF
+          } > "$body"
+
+          .github/scripts/schema-change-issue.sh report \
+            "c2pa-rs schemas changed between ${CHECKED_IN} (checked in) and ${LATEST}" "$body"
+
+      - name: Close Resolved Schema Change Issue
+        if: steps.compare.outputs.drift != 'true'
+        env:
+          CHECKED_IN: ${{ steps.releases.outputs.checked_in }}
+          LATEST: ${{ steps.releases.outputs.latest }}
+          COMPARE: ${{ steps.releases.outputs.compare }}
         run: |
-          gh issue create \
-            --title "C2PA schema changes detected between ${{ steps.get_tags.outputs.previous_tag }} and ${{ steps.get_tags.outputs.current_tag }}" \
-            --label "schema-change" \
-            --body "$(cat <<'ISSUE_EOF'
-          ## Schema Changes Detected
+          set -euo pipefail
 
-          Changes were detected in the upstream c2pa-rs JSON schemas between \
-          `${{ steps.get_tags.outputs.previous_tag }}` and `${{ steps.get_tags.outputs.current_tag }}`.
+          comment="$RUNNER_TEMP/issue-comment.md"
+          if [ "$COMPARE" = true ]; then
+            echo "The schemas of the latest stable c2pa-rs release, \`${LATEST}\`, match the copies in \`Library/Tests/Resources\`, which were generated from \`${CHECKED_IN}\`. Nothing to update." > "$comment"
+          else
+            echo "The copies in \`Library/Tests/Resources\` were generated from \`${CHECKED_IN}\`, which is the latest stable c2pa-rs release (\`${LATEST}\`) or ahead of it, so there is nothing to compare." > "$comment"
+          fi
 
-          ### Changed Schemas
-
-          ${{ steps.compare.outputs.changes }}
-
-          ### Action Required
-
-          Review the upstream schema changes and update `C2PASettingsDefinition` in \
-          `Library/Sources/Manifest/SettingsDefinition.swift` to match the new schema.
-
-          See the [c2pa-rs releases](https://github.com/contentauth/c2pa-rs/releases) for details.
-          ISSUE_EOF
-          )"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          .github/scripts/schema-change-issue.sh clear "$comment"
