@@ -345,9 +345,12 @@ public struct AnyCodable: Codable, Equatable {
     }
 
     public static func == (lhs: AnyCodable, rhs: AnyCodable) -> Bool {
-        // Compare serialized JSON for equality
-        guard let lhsData = try? JSONEncoder().encode(lhs),
-              let rhsData = try? JSONEncoder().encode(rhs) else {
+        // Compare the serialized JSON. The keys are sorted because two dictionaries holding the
+        // same pairs need not iterate in the same order, and unsorted output follows that order.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let lhsData = try? encoder.encode(lhs),
+              let rhsData = try? encoder.encode(rhs) else {
             return false
         }
         return lhsData == rhsData
