@@ -44,6 +44,9 @@ jobs:
       - name: Test Schema Drift Report
         run: bash .github/scripts/tests/schema-drift-test.sh
 
+      - name: Test Library Recipe Failure Handling
+        run: bash .github/scripts/tests/make-library-test.sh
+
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:

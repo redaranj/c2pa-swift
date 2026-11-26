@@ -51,9 +51,15 @@ lint:
 
 # Build the C2PA multi-platform library (iOS device + iOS simulator + Mac Catalyst + macOS).
 # Produces Library/Frameworks/C2PAC.xcframework and output/C2PAC.xcframework.zip.
+#
+# The recipe is one shell command, so `set -e` is what stops it at the first
+# step that fails. Without it a failed platform build was followed by the
+# remaining builds and the packaging steps, over whatever products an earlier
+# build had left behind, and the target still succeeded.
 library:
 	@echo "Building C2PA multi-platform library (iOS device + iOS simulator + Mac Catalyst + macOS)..."
-	@SYMROOT=$$(xcodebuild -workspace C2PA.xcworkspace -scheme Library -showBuildSettings 2>/dev/null | grep "^    SYMROOT = " | head -1 | sed 's/.*SYMROOT = //'); \
+	@set -e; \
+	SYMROOT=$$(xcodebuild -workspace C2PA.xcworkspace -scheme Library -showBuildSettings 2>/dev/null | grep "^    SYMROOT = " | head -1 | sed 's/.*SYMROOT = //'); \
 	echo "Build root: $$SYMROOT"; \
 	echo "Building for iOS device..."; \
 	xcodebuild -workspace C2PA.xcworkspace -scheme Library -configuration $(CONFIGURATION) -destination "generic/platform=iOS" $(C2PA_ARCHIVE_FLAGS) build; \
@@ -82,7 +88,8 @@ library:
 		mkdir -p output; \
 		rm -rf output/C2PAC.xcframework output/C2PAC.xcframework.zip; \
 		cp -R Library/Frameworks/C2PAC.xcframework output/; \
-		cd output && zip -ry C2PAC.xcframework.zip C2PAC.xcframework > /dev/null; \
+		cd output; \
+		zip -ry C2PAC.xcframework.zip C2PAC.xcframework > /dev/null; \
 		echo "XCFramework packaged to output/C2PAC.xcframework.zip"; \
 	else \
 		echo "::error::Failed to find frameworks for all platforms"; \
