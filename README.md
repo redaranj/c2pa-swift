@@ -145,6 +145,40 @@ A failure names the schema definition and the key, value or enumeration case
 that no longer matches. A definition or key that is deliberately left without a
 Swift counterpart is listed in the suite with the reason.
 
+### Strict memory safety
+
+The library is built with Swift's strict memory safety checking, so every use
+of an unsafe construct in `Library/Sources` is acknowledged in the source:
+
+- An expression that uses one is marked `unsafe`. That includes every call
+  into the C API, since those take and return raw pointers.
+- The classes that own a native handle (`Reader`, `Builder`, `Stream`,
+  `Signer`, `C2PAContext` and `C2PASettings`) are marked `@safe`. Each stores a
+  raw pointer and keeps it valid for its own lifetime, so code that uses them
+  needs no marker.
+
+The two ways of building the library check this differently:
+
+| Build | Setting | An unmarked unsafe use |
+|-------|---------|------------------------|
+| Xcode project (the `make` targets, CI) | `-strict-memory-safety -Werror StrictMemorySafety` | fails the build |
+| Swift package (`swift build`, apps that depend on the package) | `.strictMemorySafety()` | is a warning |
+
+A change that builds with `swift build` can therefore still fail in CI. Build
+with `make library` or `make test-library` before opening a pull request.
+
+From Swift 6.4, the compiler no longer counts a call that hands a pointer to a
+closure, such as `withCString`, `withUnsafeBytes` or `withUnsafeBufferPointer`,
+as unsafe in itself, and reports the marker in front of it:
+
+```
+warning: no unsafe operations occur within 'unsafe' expression
+```
+
+Leave those markers in place. Swift 6.3, the oldest toolchain the package
+supports, requires them, and the warning is not one the Xcode build treats as
+an error.
+
 ### Running applications
 
 ```bash
