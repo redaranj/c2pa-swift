@@ -8,8 +8,14 @@
 # what SettingsSchemaConformanceTests and ManifestSchemaConformanceTests report.
 #
 # Environment:
-#   C2PA_RS_DIR  An existing c2pa-rs checkout to use instead of cloning. It must
-#                already be at the tag for C2PA_VERSION.
+#   C2PA_RS_DIR             An existing c2pa-rs checkout to use instead of
+#                           cloning. It must already be at the tag for the
+#                           version being exported.
+#   C2PA_SCHEMA_VERSION     Export this release (for example v0.92.3) instead
+#                           of the one C2PA_VERSION names.
+#   C2PA_SCHEMA_OUTPUT_DIR  Write the schemas here instead of over the copies
+#                           the tests use. The schema change workflow sets both
+#                           to compare a newer release with those copies.
 #
 # Requires: git, cargo (the Rust toolchain c2pa-rs asks for), python3.
 
@@ -17,15 +23,19 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 XCCONFIG="${REPO_ROOT}/Configurations/Base.xcconfig"
-OUTPUT_DIR="${REPO_ROOT}/Library/Tests/Resources"
+OUTPUT_DIR="${C2PA_SCHEMA_OUTPUT_DIR:-${REPO_ROOT}/Library/Tests/Resources}"
 SCHEMAS=(Builder ManifestDefinition Reader Settings)
 
-VERSION="$(sed -n 's/^C2PA_VERSION[[:space:]]*=[[:space:]]*//p' "${XCCONFIG}" | tr -d '[:space:]')"
+VERSION="${C2PA_SCHEMA_VERSION:-}"
+if [ -z "${VERSION}" ]; then
+    VERSION="$(sed -n 's/^C2PA_VERSION[[:space:]]*=[[:space:]]*//p' "${XCCONFIG}" | tr -d '[:space:]')"
+fi
 if [ -z "${VERSION}" ]; then
     echo "ERROR: C2PA_VERSION not found in ${XCCONFIG}" >&2
     exit 1
 fi
 TAG="c2pa-${VERSION}"
+mkdir -p "${OUTPUT_DIR}"
 
 if [ -n "${C2PA_RS_DIR:-}" ]; then
     CHECKOUT="${C2PA_RS_DIR}"
@@ -92,7 +102,7 @@ with open(destination, "w", encoding="utf-8") as handle:
     json.dump(ordered, handle, indent=2, ensure_ascii=False)
     handle.write("\n")
 PYTHON
-    echo "  Wrote Library/Tests/Resources/${name}.schema.json"
+    echo "  Wrote ${OUTPUT_DIR#"${REPO_ROOT}/"}/${name}.schema.json"
 done
 
 echo "Schemas updated to c2pa-rs ${VERSION}."

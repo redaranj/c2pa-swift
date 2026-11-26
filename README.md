@@ -145,6 +145,12 @@ A failure names the schema definition and the key, value or enumeration case
 that no longer matches. A definition or key that is deliberately left without a
 Swift counterpart is listed in the suite with the reason.
 
+A scheduled workflow, `check-schema-changes.yml`, compares that copy with the
+schemas of the latest stable c2pa-rs release. While they differ it keeps one
+issue labelled `schema-change` open, listing what changed, and closes it once
+they match again. It goes by the release stamped in the copy, so changing
+`C2PA_VERSION` alone does not close the issue; regenerating the copy does.
+
 ### Strict memory safety
 
 The library is built with Swift's strict memory safety checking, so every use
