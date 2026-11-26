@@ -183,12 +183,8 @@ import Testing
         #expect(fields["key"] as? String == "value")
         #expect(fields["number"] as? Int == 42)
         #expect(fields.count == 2)
-
-        // AnyCodable's == compares unsorted JSON, so equal multi-key
-        // dictionaries compare unequal whenever their key order differs.
-        withKnownIssue("AnyCodable equality depends on dictionary key order", isIntermittent: true) {
-            #expect(data == AnyCodable(["key": "value", "number": 42] as [String: Any]))
-        }
+        #expect(data == AnyCodable(["key": "value", "number": 42] as [String: Any]))
+        #expect(decoded == assertion)
     }
 
     @Test func trainingMiningAssertion() throws {
@@ -265,5 +261,57 @@ import Testing
     @Test func anyCodableEquality() {
         #expect(AnyCodable("hello") == AnyCodable("hello"))
         #expect(AnyCodable("hello") != AnyCodable("world"))
+    }
+
+    /// Enough keys that two dictionaries holding them will not iterate alike by chance.
+    private var manyKeys: [String: Any] {
+        Dictionary(uniqueKeysWithValues: (0..<16).map { ("key\($0)", $0) })
+    }
+
+    /// The same pairs in a dictionary with far more room, which makes it iterate in another order.
+    private func reordered(_ dictionary: [String: Any]) -> [String: Any] {
+        var copy = [String: Any](minimumCapacity: dictionary.count * 64)
+        for (key, value) in dictionary { copy[key] = value }
+        return copy
+    }
+
+    /// Two dictionaries with the same pairs are equal however each happens to order its keys.
+    @Test func anyCodableEqualityIgnoresDictionaryOrder() {
+        let dictionary = manyKeys
+        let other = reordered(dictionary)
+        #expect(Array(dictionary.keys) != Array(other.keys), "the two dictionaries were meant to iterate differently")
+        #expect(AnyCodable(dictionary) == AnyCodable(other))
+    }
+
+    /// The same holds for dictionaries inside dictionaries and inside arrays.
+    @Test func anyCodableEqualityIgnoresNestedDictionaryOrder() {
+        let dictionary = manyKeys
+        let other = reordered(dictionary)
+        #expect(AnyCodable(["outer": dictionary] as [String: Any]) == AnyCodable(["outer": other] as [String: Any]))
+        #expect(AnyCodable([dictionary, "tail"] as [Any]) == AnyCodable([other, "tail"] as [Any]))
+    }
+
+    /// Models that carry free-form values compare equal when those values do.
+    @Test func modelsWithEqualFreeFormValuesAreEqual() {
+        let dictionary = manyKeys
+        let other = reordered(dictionary)
+        #expect(
+            AssertionDefinition.custom(label: "com.example.test", data: AnyCodable(dictionary))
+                == .custom(label: "com.example.test", data: AnyCodable(other)))
+        #expect(
+            Action(action: "c2pa.edited", parameters: ["details": AnyCodable(dictionary)])
+                == Action(action: "c2pa.edited", parameters: ["details": AnyCodable(other)]))
+    }
+
+    /// Ignoring key order must not make different values equal.
+    @Test func anyCodableEqualityStillTellsValuesApart() {
+        let dictionary = manyKeys
+        var changed = reordered(dictionary)
+        changed["key3"] = 99
+        var shorter = reordered(dictionary)
+        shorter["key3"] = nil
+        #expect(AnyCodable(dictionary) != AnyCodable(changed))
+        #expect(AnyCodable(dictionary) != AnyCodable(shorter))
+        #expect(AnyCodable([1, 2, 3]) != AnyCodable([3, 2, 1]), "array order is part of the value")
     }
 }
