@@ -1,14 +1,13 @@
 name: Tests
 
 on:
+  # A branch is tested through its pull request, whatever branch that targets,
+  # so a commit pushed to it starts one run and not a second for the push. A
+  # branch with no pull request can be run by hand. Tracking branches reach
+  # this workflow only as the pre-promotion gate in track-c2pa-rs.yml.
   push:
-    # Tracking branches run their own make test-library via
-    # track-c2pa-rs.yml and are force-pushed frequently; the full matrix
-    # runs for them only as the pre-promotion gate.
-    branches-ignore:
-      - "track/**"
-  pull_request:
     branches: [main]
+  pull_request:
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -17,6 +16,14 @@ on:
         required: false
         default: ""
         type: string
+
+# A new commit on a pull request replaces the run for the commit before it.
+# Every other run is in a group of its own, so nothing else is cancelled or
+# made to wait: not a run on main, and not the tracking workflows that call
+# this one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 env:
   SCHEME: Library
